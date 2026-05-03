@@ -16,17 +16,15 @@ export async function POST(
     if (battle) {
       console.log('[Battle Init] Battle found');
       const isPlayer1 = battle.player1Id === playerId;
-      const myPokemon = isPlayer1 ? battle.player1Pokemon : battle.player2Pokemon;
-      const opponentPokemon = isPlayer1 ? battle.player2Pokemon : battle.player1Pokemon;
-
-      console.log('[Battle Init] Sending data - myPokemon count:', myPokemon.length);
-      console.log('[Battle Init] Sending data - opponentPokemon count:', opponentPokemon.length);
 
       return NextResponse.json({
-        myPokemon,
-        opponentPokemon,
-        myActiveIndex: isPlayer1 ? battle.player1ActiveIndex : battle.player2ActiveIndex,
-        opponentActiveIndex: isPlayer1 ? battle.player2ActiveIndex : battle.player1ActiveIndex,
+        player1Pokemon: battle.player1Pokemon,
+        player2Pokemon: battle.player2Pokemon,
+        player1ActiveIndex: battle.player1ActiveIndex,
+        player2ActiveIndex: battle.player2ActiveIndex,
+        player1Id: battle.player1Id,
+        player2Id: battle.player2Id,
+        isPlayer1,
       });
     }
 

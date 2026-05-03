@@ -6,37 +6,34 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getAllPokemon } from "@/lib/pokemon-data";
-import { Pokemon } from "@/lib/types/pokemon";
 import { getPusherClient } from "@/lib/pusher";
 
 export default function PokemonSelectionPage() {
   const router = useRouter();
-  const [allPokemon, setAllPokemon] = useState<Pokemon[]>([]);
   const [selectedPokemon, setSelectedPokemon] = useState<number[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [playerId] = useState(() => `player-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const [allPokemon] = useState(() => getAllPokemon());
 
+  // Pusherチャンネルを常にサブスクライブ（コンポーネントマウント時）
   useEffect(() => {
-    setAllPokemon(getAllPokemon());
-  }, []);
-
-  useEffect(() => {
-    if (!isSearching) return;
-
     const pusher = getPusherClient();
     const channel = pusher.subscribe(`player-${playerId}`);
 
-    channel.bind('match-found', (data: any) => {
-      console.log('Match found!', data);
+    console.log('[Pusher] Subscribed to channel:', `player-${playerId}`);
+
+    channel.bind('match-found', (data: { battleId: string; isPlayer1: boolean }) => {
+      console.log('[Pusher] Match found!', data);
       // バトル画面に遷移
       router.push(`/battle/${data.battleId}?playerId=${playerId}&isPlayer1=${data.isPlayer1}`);
     });
 
     return () => {
+      console.log('[Pusher] Unsubscribing from channel');
       channel.unbind_all();
       channel.unsubscribe();
     };
-  }, [isSearching, playerId, router]);
+  }, [playerId, router]);
 
   const togglePokemon = (pokemonId: number) => {
     if (selectedPokemon.includes(pokemonId)) {
@@ -59,6 +56,8 @@ export default function PokemonSelectionPage() {
     const selectedPokemonData = allPokemon.filter(p => selectedPokemon.includes(p.id));
 
     try {
+      console.log('[Matchmaking] Sending join request for:', playerId);
+      
       const response = await fetch('/api/matchmaking/join', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -69,13 +68,11 @@ export default function PokemonSelectionPage() {
       });
 
       const data = await response.json();
-      
-      if (data.status === 'matched') {
-        // 即座にマッチングした場合
-        router.push(`/battle/${data.battleId}?playerId=${playerId}&isPlayer1=true`);
-      }
+      console.log('[Matchmaking] API response:', data);
+
+      // マッチング結果はPusherで受け取る（APIレスポンスは使用しない）
     } catch (error) {
-      console.error('Error joining matchmaking:', error);
+      console.error('[Matchmaking] Error joining matchmaking:', error);
       setIsSearching(false);
       alert('マッチングに失敗しました');
     }
@@ -88,77 +85,102 @@ export default function PokemonSelectionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ playerId }),
       });
+      setIsSearching(false);
     } catch (error) {
       console.error('Error leaving matchmaking:', error);
     }
-    setIsSearching(false);
   };
 
-  if (isSearching) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-linear-to-b from-blue-100 to-blue-200 p-4">
-        <Card className="p-8 max-w-md w-full text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <h2 className="text-2xl font-bold mb-2">対戦相手を探しています...</h2>
-          <p className="text-gray-600 mb-4">しばらくお待ちください</p>
-          <Button onClick={cancelSearch} variant="outline">キャンセル</Button>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-linear-to-b from-blue-100 to-blue-200 p-4">
+    <div className="min-h-screen bg-linear-to-b from-blue-100 to-blue-200 p-8">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-4xl font-bold text-center mb-2 text-blue-900">ポケモンバトル</h1>
-        <p className="text-center mb-6 text-gray-700">対戦するポケモンを3匹選んでください ({selectedPokemon.length}/3)</p>
+        <h1 className="text-4xl font-bold text-center mb-8">ポケモン選択</h1>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+        <Card className="p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold mb-2">選択中のポケモン: {selectedPokemon.length}/3</h2>
+              <p className="text-gray-600">バトル用のポケモンを3匹選んでください</p>
+            </div>
+            <div className="flex gap-4">
+              {!isSearching ? (
+                <Button 
+                  onClick={startBattle}
+                  disabled={selectedPokemon.length !== 3}
+                  size="lg"
+                >
+                  バトル開始
+                </Button>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                  <span className="text-lg">マッチング中...</span>
+                  <Button onClick={cancelSearch} variant="outline">
+                    キャンセル
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {allPokemon.map((pokemon) => {
             const isSelected = selectedPokemon.includes(pokemon.id);
+            
             return (
               <Card
                 key={pokemon.id}
-                className={`p-4 cursor-pointer transition-all hover:scale-105 ${
-                  isSelected ? 'ring-4 ring-blue-500 bg-blue-50' : 'hover:shadow-lg'
-                }`}
+                className={`cursor-pointer transition-all ${
+                  isSelected 
+                    ? 'ring-4 ring-purple-500 bg-purple-50' 
+                    : 'hover:shadow-lg'
+                } ${selectedPokemon.length >= 3 && !isSelected ? 'opacity-50' : ''}`}
                 onClick={() => togglePokemon(pokemon.id)}
               >
-                <div className="flex flex-col items-center">
-                  <div className="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center mb-3">
-                    <span className="text-4xl">🎮</span>
+                <div className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xl font-bold">{pokemon.name}</h3>
+                    {isSelected && (
+                      <Badge className="bg-purple-600">選択中</Badge>
+                    )}
                   </div>
-                  <h3 className="text-xl font-bold mb-2">{pokemon.name}</h3>
+                  
                   <div className="flex gap-2 mb-3">
                     {pokemon.types.map((type) => (
                       <Badge key={type} variant="secondary">{type}</Badge>
                     ))}
                   </div>
-                  <p className="text-sm text-gray-600 mb-2">特性: {pokemon.ability}</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs w-full">
-                    <div>HP: {pokemon.stats.hp}</div>
-                    <div>攻撃: {pokemon.stats.attack}</div>
-                    <div>防御: {pokemon.stats.defense}</div>
-                    <div>素早: {pokemon.stats.speed}</div>
+
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="font-semibold">HP:</span> {pokemon.stats.hp}
+                    </div>
+                    <div>
+                      <span className="font-semibold">攻撃:</span> {pokemon.stats.attack}
+                    </div>
+                    <div>
+                      <span className="font-semibold">防御:</span> {pokemon.stats.defense}
+                    </div>
+                    <div>
+                      <span className="font-semibold">素早さ:</span> {pokemon.stats.speed}
+                    </div>
                   </div>
-                  {isSelected && (
-                    <Badge className="mt-3 bg-blue-500">選択中</Badge>
-                  )}
+
+                  <div className="mt-3">
+                    <p className="text-sm font-semibold mb-1">技:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {pokemon.moves.map((move, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {move.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </Card>
             );
           })}
-        </div>
-
-        <div className="flex justify-center">
-          <Button
-            onClick={startBattle}
-            disabled={selectedPokemon.length !== 3}
-            size="lg"
-            className="text-xl px-8 py-6"
-          >
-            対戦開始 ({selectedPokemon.length}/3)
-          </Button>
         </div>
       </div>
     </div>

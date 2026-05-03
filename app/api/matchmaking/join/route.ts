@@ -50,7 +50,6 @@ export async function POST(request: NextRequest) {
       // 両プレイヤーにマッチング成立を通知（パブリックチャンネルに変更）
       await pusherServer.trigger(`player-${match.player1.playerId}`, 'match-found', {
         battleId,
-        opponentId: match.player2.playerId,
         isPlayer1: true,
       });
 
@@ -58,7 +57,6 @@ export async function POST(request: NextRequest) {
 
       await pusherServer.trigger(`player-${match.player2.playerId}`, 'match-found', {
         battleId,
-        opponentId: match.player1.playerId,
         isPlayer1: false,
       });
 
@@ -78,7 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ 
         status: 'matched',
         battleId,
-        opponentId: playerId === match.player1.playerId ? match.player2.playerId : match.player1.playerId,
+        isPlayer1: playerId === match.player1.playerId,
       });
     }
 

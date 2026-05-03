@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, use, useRef, useCallback } from "react";
+import { useState, useEffect, use, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { BattlePokemon, BattleCommand, BattleActionEvent, TurnAction } from "@/lib/types/pokemon";
+import { BattleCommand, TurnResult, TurnEvent, PlayerState } from "@/lib/types/pokemon";
 import { getPusherClient } from "@/lib/pusher";
 
 export default function BattlePage({ params }: { params: Promise<{ battleId: string }> }) {
@@ -19,37 +19,15 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
   const playerId = searchParams.get('playerId') || '';
   const isPlayer1 = searchParams.get('isPlayer1') === 'true';
 
-  const [myPokemon, setMyPokemon] = useState<BattlePokemon[]>([]);
-  const [opponentPokemon, setOpponentPokemon] = useState<BattlePokemon[]>([]);
-  const [myActivePokemonIndex, setMyActivePokemonIndex] = useState(0);
-  const [opponentActivePokemonIndex, setOpponentActivePokemonIndex] = useState(0);
+  const [player1State, setPlayer1State] = useState<PlayerState | null>(null);
+  const [player2State, setPlayer2State] = useState<PlayerState | null>(null);
+  const [battlePhase, setBattlePhase] = useState<'waiting' | 'selecting' | 'action' | 'finished'>('waiting');
+  const [needSwitchPlayerId, setNeedSwitchPlayerId] = useState<string | null>(null);
   const [battleLog, setBattleLog] = useState<string[]>([]);
-  const [currentPhase, setCurrentPhase] = useState<'waiting' | 'selecting' | 'animating' | 'switching' | 'finished'>('waiting');
-  const [myCommand, setMyCommand] = useState<BattleCommand | null>(null);
-  const [winner, setWinner] = useState<'me' | 'opponent' | null>(null);
+  const [selectedCommand, setSelectedCommand] = useState<BattleCommand | null>(null);
+  const [winnerId, setWinnerId] = useState<string | null>(null);
   const [showSurrenderDialog, setShowSurrenderDialog] = useState(false);
   const [showResultDialog, setShowResultDialog] = useState(false);
-
-  const myPokemonRef = useRef(myPokemon);
-  const opponentPokemonRef = useRef(opponentPokemon);
-  const myActivePokemonIndexRef = useRef(myActivePokemonIndex);
-  const opponentActivePokemonIndexRef = useRef(opponentActivePokemonIndex);
-
-  useEffect(() => {
-    myPokemonRef.current = myPokemon;
-  }, [myPokemon]);
-
-  useEffect(() => {
-    opponentPokemonRef.current = opponentPokemon;
-  }, [opponentPokemon]);
-
-  useEffect(() => {
-    myActivePokemonIndexRef.current = myActivePokemonIndex;
-  }, [myActivePokemonIndex]);
-
-  useEffect(() => {
-    opponentActivePokemonIndexRef.current = opponentActivePokemonIndex;
-  }, [opponentActivePokemonIndex]);
 
   const addLog = (message: string) => {
     console.log('[Battle Log]', message);
@@ -58,76 +36,41 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const processAction = useCallback(async (action: TurnAction) => {
-    switch (action.type) {
-      case 'attack': {
-        const isMyAttack = action.attackerId === playerId;
-        const attackerName = isMyAttack 
-          // 自分の場に出しているポケモンの名称
-          ? myPokemonRef.current[myActivePokemonIndexRef.current]?.name 
-          // 敵の場に出しているポケモンの名称
-          : opponentPokemonRef.current[opponentActivePokemonIndexRef.current]?.name;
-        
-        let message = `${attackerName}の${action.move}！`;
-        
-        if (action.damage === 0) {
-          message += ' しかし攻撃は外れた！';
-        } else {
-          if (action.isCritical) {
-            message += ' 急所に当たった！';
-          }
-          if (action.effectiveness > 1) {
-            message += ' 効果は抜群だ！';
-          } else if (action.effectiveness < 1) {
-            message += ' 効果はいまひとつのようだ...';
-          }
-          message += ` ${action.damage}のダメージ！`;
+  const processEvent = useCallback(async (event: TurnEvent) => {
+    if (event.type === 'move') {
+      const attackerName = event.attackerName;
+      
+      let message = `${attackerName}の${event.moveName}！`;
+      
+      if (event.damage === 0) {
+        message += ' しかし攻撃は外れた！';
+      } else {
+        if (event.isCritical) {
+          message += ' 急所に当たった！';
         }
-        
-        addLog(message);
-        break;
+        if (event.effectiveness > 1) {
+          message += ' 効果は抜群だ！';
+        } else if (event.effectiveness < 1 && event.effectiveness > 0) {
+          message += ' 効果はいまひとつのようだ...';
+        }
+        message += ` ${event.damage}のダメージ！`;
+      }
+      
+      addLog(message);
+
+      if (event.fainted) {
+        addLog(`${event.defenderName}は倒れた！`);
       }
 
-      case 'faint': {
-        addLog(`${action.pokemonName}は倒れた！`);
-        
-        const isMine = action.playerId === playerId;
-        if (isMine) {
-          setMyPokemon(prev => {
-            const updated = [...prev];
-            updated[action.pokemonIndex].currentHp = 0;
-            return updated;
-          });
-        } else {
-          setOpponentPokemon(prev => {
-            const updated = [...prev];
-            updated[action.pokemonIndex].currentHp = 0;
-            return updated;
-          });
-        }
-        break;
+      await sleep(800);
+    } else if (event.type === 'switch') {
+      const isMine = event.player === playerId;
+      if (isMine) {
+        addLog(`${event.pokemonName}に交換した！`);
+      } else {
+        addLog(`相手は${event.pokemonName}に交換した！`);
       }
-
-      case 'need-switch': {
-        if (action.playerId === playerId) {
-          addLog('次のポケモンを選択してください');
-        } else {
-          addLog('相手がポケモンを交換しています...');
-        }
-        break;
-      }
-
-      case 'switch': {
-        const isMine = action.playerId === playerId;
-        if (isMine) {
-          setMyActivePokemonIndex(action.pokemonIndex);
-          addLog(`${action.pokemonName}に交換した！`);
-        } else {
-          setOpponentActivePokemonIndex(action.pokemonIndex);
-          addLog(`相手は${action.pokemonName}に交換した！`);
-        }
-        break;
-      }
+      await sleep(600);
     }
   }, [playerId]);
 
@@ -144,11 +87,22 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
         if (response.ok) {
           const data = await response.json();
           console.log('[Battle Init] Received data:', data);
-          setMyPokemon(data.myPokemon);
-          setOpponentPokemon(data.opponentPokemon);
-          setMyActivePokemonIndex(data.myActiveIndex);
-          setOpponentActivePokemonIndex(data.opponentActiveIndex);
-          setCurrentPhase('selecting');
+          
+          const p1State: PlayerState = {
+            id: data.player1Id,
+            pokemon: data.player1Pokemon,
+            activePokemonIndex: data.player1ActiveIndex,
+          };
+
+          const p2State: PlayerState = {
+            id: data.player2Id,
+            pokemon: data.player2Pokemon,
+            activePokemonIndex: data.player2ActiveIndex,
+          };
+
+          setPlayer1State(p1State);
+          setPlayer2State(p2State);
+          setBattlePhase('selecting');
           addLog('バトル開始！');
         } else {
           console.error('[Battle Init] Failed to fetch:', response.status);
@@ -159,11 +113,11 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
     };
 
     fetchBattleInit();
-  }, [battleId, playerId]);
+  }, [battleId, playerId, isPlayer1]);
 
   useEffect(() => {
-    if (myPokemon.length === 0) {
-      console.log('[Pusher] Waiting for Pokemon data...');
+    if (!player1State || !player2State) {
+      console.log('[Pusher] Waiting for battle state...');
       return;
     }
 
@@ -172,46 +126,49 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
 
     console.log('[Pusher] Subscribing to battle channel:', `battle-${battleId}`);
 
-    channel.bind('battle-action', async (data: BattleActionEvent) => {
-      console.log('[Pusher] Received battle-action event:', data);
+    channel.bind('turn-result', async (data: TurnResult) => {
+      console.log('[Pusher] Received turn-result:', data);
       
-      await processAction(data.action);
-      await sleep(800);
+      // アニメーション中は操作不可
+      setBattlePhase('action');
+      setSelectedCommand(null);
 
-      const myUpdatedPokemon = isPlayer1 ? data.battleState.player1Pokemon : data.battleState.player2Pokemon;
-      const opponentUpdatedPokemon = isPlayer1 ? data.battleState.player2Pokemon : data.battleState.player1Pokemon;
-      const myUpdatedActiveIndex = isPlayer1 ? data.battleState.player1ActiveIndex : data.battleState.player2ActiveIndex;
-      const opponentUpdatedActiveIndex = isPlayer1 ? data.battleState.player2ActiveIndex : data.battleState.player1ActiveIndex;
-      
-      setMyPokemon(myUpdatedPokemon);
-      setOpponentPokemon(opponentUpdatedPokemon);
-      setMyActivePokemonIndex(myUpdatedActiveIndex);
-      setOpponentActivePokemonIndex(opponentUpdatedActiveIndex);
+      // イベントを順次処理
+      for (const event of data.turnEvents) {
+        await processEvent(event);
+      }
 
-      if (data.battleEnd) {
-        console.log('[Pusher] Battle ended:', data.battleEnd);
-        const iWon = data.battleEnd.winnerId === playerId;
-        setWinner(iWon ? 'me' : 'opponent');
-        setCurrentPhase('finished');
+      // バトル状態を更新
+      setPlayer1State(data.battleState.player1);
+      setPlayer2State(data.battleState.player2);
+      setBattlePhase(data.battleState.phase);
+      setNeedSwitchPlayerId(data.battleState.needSwitchPlayerId);
+
+      // ゲーム終了判定
+      if (data.gameOver) {
+        console.log('[Pusher] Battle ended:', data.gameOver);
+        setWinnerId(data.gameOver.winnerId);
+        setBattlePhase('finished');
         setShowResultDialog(true);
         
-        if (data.battleEnd.reason === 'surrender') {
+        const iWon = data.gameOver.winnerId === playerId;
+        if (data.gameOver.reason === 'surrender') {
           addLog(iWon ? '相手が降参した！' : 'あなたは降参した');
         } else {
           addLog(iWon ? 'あなたの勝利！' : 'あなたの敗北...');
         }
-      } else if (data.needSwitch) {
-        if (data.action.type === 'need-switch' && data.action.playerId === playerId) {
-          console.log('[Pusher] I need to switch');
-          setCurrentPhase('switching');
+        return;
+      }
+
+      // フェーズに応じた処理
+      if (data.battleState.phase === 'action' && data.battleState.needSwitchPlayerId) {
+        if (data.battleState.needSwitchPlayerId === playerId) {
+          addLog('次のポケモンを選択してください');
         } else {
-          console.log('[Pusher] Opponent is switching, waiting...');
-          setCurrentPhase('waiting');
+          addLog('相手がポケモンを交換しています...');
         }
-      } else {
-        console.log('[Pusher] Action processed, ready for next command');
-        setCurrentPhase('selecting');
-        setMyCommand(null);
+      } else if (data.battleState.phase === 'selecting') {
+        addLog('コマンドを選択してください');
       }
     });
 
@@ -220,12 +177,11 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
       channel.unbind_all();
       channel.unsubscribe();
     };
-  }, [battleId, playerId, isPlayer1, myPokemon.length, processAction]);
+  }, [battleId, playerId, player1State, player2State, processEvent]);
 
   const submitCommand = async (command: BattleCommand) => {
     console.log('[Command] Submitting command:', command);
-    setMyCommand(command);
-    setCurrentPhase('waiting');
+    setSelectedCommand(command);
 
     try {
       const response = await fetch(`/api/battle/${battleId}/command`, {
@@ -239,27 +195,18 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
         addLog('相手の行動を待っています...');
       } else {
         console.error('[Command] Failed to submit:', response.status);
+        setSelectedCommand(null);
       }
     } catch (error) {
       console.error('[Command] Error submitting command:', error);
-      setCurrentPhase('selecting');
-      setMyCommand(null);
+      setSelectedCommand(null);
     }
   };
 
   const handleSwitch = async (pokemonIndex: number) => {
     console.log('[Switch] Switching to pokemon:', pokemonIndex);
-    setCurrentPhase('waiting');
-    addLog(`${myPokemon[pokemonIndex].name}に交換した！`);
     
-    await fetch(`/api/battle/${battleId}/command`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        playerId, 
-        command: { type: 'switch', pokemonIndex } 
-      }),
-    });
+    await submitCommand({ type: 'switch', pokemonIndex });
   };
 
   const handleSurrender = () => {
@@ -271,7 +218,8 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
     router.push('/');
   };
 
-  if (myPokemon.length === 0) {
+  // ローディング
+  if (!player1State || !player2State) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-linear-to-b from-purple-100 to-purple-200">
         <Card className="p-8">
@@ -282,30 +230,32 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
     );
   }
 
-  if (currentPhase === 'waiting') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-linear-to-b from-purple-100 to-purple-200">
-        <Card className="p-8">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-center">相手の行動を待っています...</p>
-        </Card>
-      </div>
-    );
-  }
+  const player1ActivePokemon = player1State.pokemon[player1State.activePokemonIndex];
+  const player2ActivePokemon = player2State.pokemon[player2State.activePokemonIndex];
 
-  const myActivePokemon = myPokemon[myActivePokemonIndex];
-  const opponentActivePokemon = opponentPokemon[opponentActivePokemonIndex];
+  // コマンド選択待ち判定
+  const canSelectCommand = battlePhase === 'selecting' && !selectedCommand;
+  
+  // 強制交代判定
+  const mustSwitch = battlePhase === 'action' && needSwitchPlayerId === playerId;
+
+  // 待機中（相手の行動待ちまたはアニメーション中）
+  const isWaiting = (battlePhase === 'action' && needSwitchPlayerId !== playerId) || 
+                    (battlePhase === 'selecting' && selectedCommand !== null);
 
   return (
     <div className="min-h-screen bg-linear-to-b from-purple-100 to-purple-200 p-4">
       <div className="max-w-6xl mx-auto">
+        {/* 相手のポケモン表示（Player1の視点ならPlayer2、Player2の視点ならPlayer1） */}
         <div className="mb-8">
           <Card className="p-6">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <h3 className="text-2xl font-bold mb-2">{opponentActivePokemon?.name || '???'}</h3>
+                <h3 className="text-2xl font-bold mb-2">
+                  {isPlayer1 ? player2ActivePokemon?.name : player1ActivePokemon?.name}
+                </h3>
                 <div className="flex gap-2 mb-3">
-                  {opponentActivePokemon?.types.map((type) => (
+                  {(isPlayer1 ? player2ActivePokemon?.types : player1ActivePokemon?.types)?.map((type) => (
                     <Badge key={type} variant="secondary">{type}</Badge>
                   ))}
                 </div>
@@ -313,11 +263,18 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">HP:</span>
                     <Progress 
-                      value={opponentActivePokemon ? (opponentActivePokemon.currentHp / opponentActivePokemon.maxHp) * 100 : 0} 
+                      value={
+                        isPlayer1 
+                          ? (player2ActivePokemon ? (player2ActivePokemon.currentHp / player2ActivePokemon.maxHp) * 100 : 0)
+                          : (player1ActivePokemon ? (player1ActivePokemon.currentHp / player1ActivePokemon.maxHp) * 100 : 0)
+                      } 
                       className="flex-1"
                     />
                     <span className="text-sm">
-                      {opponentActivePokemon?.currentHp || 0}/{opponentActivePokemon?.maxHp || 0}
+                      {isPlayer1 
+                        ? `${player2ActivePokemon?.currentHp || 0}/${player2ActivePokemon?.maxHp || 0}`
+                        : `${player1ActivePokemon?.currentHp || 0}/${player1ActivePokemon?.maxHp || 0}`
+                      }
                     </span>
                   </div>
                 </div>
@@ -335,6 +292,7 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
           ))}
         </Card>
 
+        {/* 自分のポケモン表示（Player1の視点ならPlayer1、Player2の視点ならPlayer2） */}
         <div className="mb-8">
           <Card className="p-6">
             <div className="flex items-center justify-between">
@@ -342,9 +300,11 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
                 <span className="text-5xl">🎮</span>
               </div>
               <div className="flex-1">
-                <h3 className="text-2xl font-bold mb-2">{myActivePokemon?.name || '???'}</h3>
+                <h3 className="text-2xl font-bold mb-2">
+                  {isPlayer1 ? player1ActivePokemon?.name : player2ActivePokemon?.name}
+                </h3>
                 <div className="flex gap-2 mb-3">
-                  {myActivePokemon?.types.map((type) => (
+                  {(isPlayer1 ? player1ActivePokemon?.types : player2ActivePokemon?.types)?.map((type) => (
                     <Badge key={type} variant="secondary">{type}</Badge>
                   ))}
                 </div>
@@ -352,11 +312,18 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">HP:</span>
                     <Progress 
-                      value={myActivePokemon ? (myActivePokemon.currentHp / myActivePokemon.maxHp) * 100 : 0} 
+                      value={
+                        isPlayer1
+                          ? (player1ActivePokemon ? (player1ActivePokemon.currentHp / player1ActivePokemon.maxHp) * 100 : 0)
+                          : (player2ActivePokemon ? (player2ActivePokemon.currentHp / player2ActivePokemon.maxHp) * 100 : 0)
+                      } 
                       className="flex-1"
                     />
                     <span className="text-sm">
-                      {myActivePokemon?.currentHp || 0}/{myActivePokemon?.maxHp || 0}
+                      {isPlayer1
+                        ? `${player1ActivePokemon?.currentHp || 0}/${player1ActivePokemon?.maxHp || 0}`
+                        : `${player2ActivePokemon?.currentHp || 0}/${player2ActivePokemon?.maxHp || 0}`
+                      }
                     </span>
                   </div>
                 </div>
@@ -365,7 +332,18 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
           </Card>
         </div>
 
-        {currentPhase === 'selecting' && !myCommand && myActivePokemon && (
+        {isWaiting && (
+          <Card className="p-8">
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
+            <p className="text-center">
+              {needSwitchPlayerId && needSwitchPlayerId !== playerId 
+                ? '相手がポケモンを交換しています...' 
+                : '相手の行動を待っています...'}
+            </p>
+          </Card>
+        )}
+
+        {canSelectCommand && (isPlayer1 ? player1ActivePokemon : player2ActivePokemon) && (
           <Card className="p-6">
             <h3 className="text-xl font-bold mb-4">コマンドを選択してください</h3>
             
@@ -373,7 +351,7 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
               <div>
                 <h4 className="font-semibold mb-2">技</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  {myActivePokemon.moves.map((move, index) => (
+                  {(isPlayer1 ? player1ActivePokemon : player2ActivePokemon)?.moves.map((move, index) => (
                     <Button
                       key={index}
                       onClick={() => submitCommand({ type: 'move', moveIndex: index })}
@@ -389,8 +367,8 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
               <div>
                 <h4 className="font-semibold mb-2">交換</h4>
                 <div className="grid grid-cols-2 gap-2">
-                  {myPokemon.map((pokemon, index) => (
-                    index !== myActivePokemonIndex && pokemon.currentHp > 0 && (
+                  {(isPlayer1 ? player1State : player2State).pokemon.map((pokemon, index) => (
+                    index !== (isPlayer1 ? player1State : player2State).activePokemonIndex && pokemon.currentHp > 0 && (
                       <Button
                         key={index}
                         onClick={() => submitCommand({ type: 'switch', pokemonIndex: index })}
@@ -414,12 +392,12 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
           </Card>
         )}
 
-        {currentPhase === 'switching' && (
+        {mustSwitch && (
           <Card className="p-6">
-            <h3 className="text-xl font-bold mb-4">交換するポケモンを選択してください</h3>
+            <h3 className="text-xl font-bold mb-4 text-red-600">交換するポケモンを選択してください</h3>
             <div className="grid grid-cols-2 gap-2">
-              {myPokemon.map((pokemon, index) => (
-                pokemon.currentHp > 0 && index !== myActivePokemonIndex && (
+              {(isPlayer1 ? player1State : player2State).pokemon.map((pokemon, index) => (
+                pokemon.currentHp > 0 && index !== (isPlayer1 ? player1State : player2State).activePokemonIndex && (
                   <Button
                     key={index}
                     onClick={() => handleSwitch(index)}
@@ -456,10 +434,10 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="text-3xl text-center">
-              {winner === 'me' ? '🎉 勝利！' : '😢 敗北...'}
+              {winnerId === playerId ? '🎉 勝利！' : '😢 敗北...'}
             </DialogTitle>
             <DialogDescription className="text-center text-lg">
-              {winner === 'me' ? 'おめでとうございます！' : 'また挑戦してください'}
+              {winnerId === playerId ? 'おめでとうございます！' : 'また挑戦してください'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -1,4 +1,4 @@
-import { BattlePokemon, BattleCommand } from './types/pokemon';
+import { BattlePokemon, BattleCommand, BattlePhase } from './types/pokemon';
 
 interface BattleState {
   battleId: string;
@@ -12,6 +12,8 @@ interface BattleState {
   player2Command: BattleCommand | null;
   turn: number;
   winnerId: string | null;
+  phase: BattlePhase;
+  needSwitchPlayerId: string | null;
 }
 
 class BattleManager {
@@ -36,6 +38,8 @@ class BattleManager {
       player2Command: null,
       turn: 1,
       winnerId: null,
+      phase: 'selecting',
+      needSwitchPlayerId: null,
     });
   }
 
@@ -59,6 +63,18 @@ class BattleManager {
   bothCommandsReady(battleId: string): boolean {
     const battle = this.battles.get(battleId);
     if (!battle) return false;
+
+    // action フェーズかつ強制交代中の場合、該当プレイヤーのコマンドのみ確認
+    if (battle.phase === 'action' && battle.needSwitchPlayerId) {
+      if (battle.needSwitchPlayerId === battle.player1Id) {
+        return battle.player1Command !== null;
+      }
+      if (battle.needSwitchPlayerId === battle.player2Id) {
+        return battle.player2Command !== null;
+      }
+    }
+
+    // 通常のコマンド選択時は両方必要
     return battle.player1Command !== null && battle.player2Command !== null;
   }
 
@@ -67,6 +83,22 @@ class BattleManager {
     if (!battle) return;
 
     this.battles.set(battleId, { ...battle, ...updates });
+  }
+
+  setPhase(battleId: string, phase: BattlePhase): void {
+    const battle = this.battles.get(battleId);
+    if (!battle) return;
+
+    battle.phase = phase;
+    this.battles.set(battleId, battle);
+  }
+
+  setNeedSwitch(battleId: string, playerId: string | null): void {
+    const battle = this.battles.get(battleId);
+    if (!battle) return;
+
+    battle.needSwitchPlayerId = playerId;
+    this.battles.set(battleId, battle);
   }
 
   endBattle(battleId: string): void {

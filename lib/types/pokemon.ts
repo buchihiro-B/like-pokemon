@@ -11,8 +11,8 @@ export interface Move {
   name: string;
   type: PokemonType;
   category: MoveCategory;
-  power: number; // 変化技は0
-  accuracy: number; // 必中は100
+  power: number;
+  accuracy: number;
   pp: number;
   description?: string;
 }
@@ -60,61 +60,53 @@ export type BattleCommand =
   | { type: "move"; moveIndex: number }
   | { type: "switch"; pokemonIndex: number }
   | { type: "surrender" };
-// ターン内のアクション型定義
-export type TurnAction = 
+
+// バトルフェーズ
+export type BattlePhase = "selecting" | "action" | "finished";
+
+// ターンイベント（アニメーション用）
+export type TurnEvent = 
   | {
-      type: "attack";
-      attackerId: string;
-      defenderId: string;
-      move: string;
+      type: "move";
+      attacker: string;
+      attackerName: string;
+      defender: string;
+      defenderName: string;
+      moveName: string;
       damage: number;
+      newHp: number;
       effectiveness: number;
       isCritical: boolean;
-    }
-  | {
-      type: "faint";
-      playerId: string;
-      pokemonIndex: number;
-      pokemonName: string;
-    }
-  | {
-      type: "need-switch";
-      playerId: string;
+      fainted: boolean;
     }
   | {
       type: "switch";
-      playerId: string;
-      pokemonIndex: number;
+      player: string;
       pokemonName: string;
+      pokemonIndex: number;
     };
 
-// ターン結果の型定義
-export interface TurnResult {
-  turnNumber: number;
-  actions: TurnAction[];
-  battleState: {
-    player1Pokemon: BattlePokemon[];
-    player2Pokemon: BattlePokemon[];
-    player1ActiveIndex: number;
-    player2ActiveIndex: number;
-  };
-  battleEnd?: {
-    winnerId: string;
-    reason: "all-fainted" | "surrender";
-  };
+// プレイヤー状態
+export interface PlayerState {
+  id: string;
+  pokemon: BattlePokemon[];
+  activePokemonIndex: number;
 }
 
-// バトルアクションイベント型定義（個別イベント送信用）
-export interface BattleActionEvent {
-  action: TurnAction;
-  battleState: {
-    player1Pokemon: BattlePokemon[];
-    player2Pokemon: BattlePokemon[];
-    player1ActiveIndex: number;
-    player2ActiveIndex: number;
-  };
-  needSwitch?: boolean;
-  battleEnd?: {
+// バトル状態
+export interface BattleState {
+  player1: PlayerState;
+  player2: PlayerState;
+  turn: number;
+  phase: BattlePhase;
+  needSwitchPlayerId: string | null;
+}
+
+// ターン結果
+export interface TurnResult {
+  battleState: BattleState;
+  turnEvents: TurnEvent[];
+  gameOver?: {
     winnerId: string;
     reason: "all-fainted" | "surrender";
   };
