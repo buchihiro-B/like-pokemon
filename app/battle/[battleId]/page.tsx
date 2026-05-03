@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { BattlePokemon, BattleCommand, TurnResult, TurnAction } from "@/lib/types/pokemon";
+import { BattlePokemon, BattleCommand, BattleActionEvent, TurnAction } from "@/lib/types/pokemon";
 import { getPusherClient } from "@/lib/pusher";
 
 export default function BattlePage({ params }: { params: Promise<{ battleId: string }> }) {
@@ -30,7 +30,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
   const [showSurrenderDialog, setShowSurrenderDialog] = useState(false);
   const [showResultDialog, setShowResultDialog] = useState(false);
 
-  // 最新の状態を参照するためのRef
   const myPokemonRef = useRef(myPokemon);
   const opponentPokemonRef = useRef(opponentPokemon);
   const myActivePokemonIndexRef = useRef(myActivePokemonIndex);
@@ -57,16 +56,16 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
     setBattleLog(prev => [...prev, message]);
   };
 
-  // アニメーション用のsleep関数
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // 個別アクションの処理（useEffectより前に定義）
   const processAction = useCallback(async (action: TurnAction) => {
     switch (action.type) {
       case 'attack': {
         const isMyAttack = action.attackerId === playerId;
         const attackerName = isMyAttack 
+          // 自分の場に出しているポケモンの名称
           ? myPokemonRef.current[myActivePokemonIndexRef.current]?.name 
+          // 敵の場に出しているポケモンの名称
           : opponentPokemonRef.current[opponentActivePokemonIndexRef.current]?.name;
         
         let message = `${attackerName}の${action.move}！`;
@@ -112,6 +111,8 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
       case 'need-switch': {
         if (action.playerId === playerId) {
           addLog('次のポケモンを選択してください');
+        } else {
+          addLog('相手がポケモンを交換しています...');
         }
         break;
       }
@@ -130,7 +131,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
     }
   }, [playerId]);
 
-  // 初期データ取得
   useEffect(() => {
     const fetchBattleInit = async () => {
       try {
@@ -161,7 +161,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
     fetchBattleInit();
   }, [battleId, playerId]);
 
-  // Pusher接続
   useEffect(() => {
     if (myPokemon.length === 0) {
       console.log('[Pusher] Waiting for Pokemon data...');
@@ -173,20 +172,12 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
 
     console.log('[Pusher] Subscribing to battle channel:', `battle-${battleId}`);
 
-    // ターン結果イベント（統合版）
-    channel.bind('turn-result', async (data: TurnResult) => {
-      console.log('[Pusher] Received turn-result event:', data);
+    channel.bind('battle-action', async (data: BattleActionEvent) => {
+      console.log('[Pusher] Received battle-action event:', data);
       
-      // アニメーションフェーズに移行
-      setCurrentPhase('animating');
+      await processAction(data.action);
+      await sleep(800);
 
-      // アクションを順次処理
-      for (const action of data.actions) {
-        await processAction(action);
-        await sleep(800); // アクション間の待機時間
-      }
-
-      // 最終状態を更新
       const myUpdatedPokemon = isPlayer1 ? data.battleState.player1Pokemon : data.battleState.player2Pokemon;
       const opponentUpdatedPokemon = isPlayer1 ? data.battleState.player2Pokemon : data.battleState.player1Pokemon;
       const myUpdatedActiveIndex = isPlayer1 ? data.battleState.player1ActiveIndex : data.battleState.player2ActiveIndex;
@@ -197,7 +188,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
       setMyActivePokemonIndex(myUpdatedActiveIndex);
       setOpponentActivePokemonIndex(opponentUpdatedActiveIndex);
 
-      // バトル終了チェック
       if (data.battleEnd) {
         console.log('[Pusher] Battle ended:', data.battleEnd);
         const iWon = data.battleEnd.winnerId === playerId;
@@ -210,19 +200,18 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
         } else {
           addLog(iWon ? 'あなたの勝利！' : 'あなたの敗北...');
         }
-      } else {
-        // need-switchアクションがあるかチェック
-        const needSwitch = data.actions.find(
-          a => a.type === 'need-switch' && a.playerId === playerId
-        );
-        
-        if (needSwitch) {
+      } else if (data.needSwitch) {
+        if (data.action.type === 'need-switch' && data.action.playerId === playerId) {
+          console.log('[Pusher] I need to switch');
           setCurrentPhase('switching');
         } else {
-          setCurrentPhase('selecting');
-          setMyCommand(null);
-          addLog(`--- ターン${data.turnNumber} ---`);
+          console.log('[Pusher] Opponent is switching, waiting...');
+          setCurrentPhase('waiting');
         }
+      } else {
+        console.log('[Pusher] Action processed, ready for next command');
+        setCurrentPhase('selecting');
+        setMyCommand(null);
       }
     });
 
@@ -233,7 +222,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
     };
   }, [battleId, playerId, isPlayer1, myPokemon.length, processAction]);
 
-  // コマンド送信
   const submitCommand = async (command: BattleCommand) => {
     console.log('[Command] Submitting command:', command);
     setMyCommand(command);
@@ -261,11 +249,9 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
 
   const handleSwitch = async (pokemonIndex: number) => {
     console.log('[Switch] Switching to pokemon:', pokemonIndex);
-    setMyActivePokemonIndex(pokemonIndex);
-    setCurrentPhase('selecting');
+    setCurrentPhase('waiting');
     addLog(`${myPokemon[pokemonIndex].name}に交換した！`);
     
-    // サーバーに交換を通知
     await fetch(`/api/battle/${battleId}/command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -313,7 +299,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
   return (
     <div className="min-h-screen bg-linear-to-b from-purple-100 to-purple-200 p-4">
       <div className="max-w-6xl mx-auto">
-        {/* 相手のポケモン */}
         <div className="mb-8">
           <Card className="p-6">
             <div className="flex items-center justify-between">
@@ -344,14 +329,12 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
           </Card>
         </div>
 
-        {/* バトルログ */}
         <Card className="p-4 mb-8 max-h-32 overflow-y-auto">
           {battleLog.slice(-5).map((log, index) => (
             <p key={index} className="text-sm mb-1">{log}</p>
           ))}
         </Card>
 
-        {/* 自分のポケモン */}
         <div className="mb-8">
           <Card className="p-6">
             <div className="flex items-center justify-between">
@@ -382,13 +365,11 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
           </Card>
         </div>
 
-        {/* コマンド選択 */}
         {currentPhase === 'selecting' && !myCommand && myActivePokemon && (
           <Card className="p-6">
             <h3 className="text-xl font-bold mb-4">コマンドを選択してください</h3>
             
             <div className="space-y-4">
-              {/* 技選択 */}
               <div>
                 <h4 className="font-semibold mb-2">技</h4>
                 <div className="grid grid-cols-2 gap-2">
@@ -405,7 +386,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
                 </div>
               </div>
 
-              {/* 交換 */}
               <div>
                 <h4 className="font-semibold mb-2">交換</h4>
                 <div className="grid grid-cols-2 gap-2">
@@ -423,7 +403,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
                 </div>
               </div>
 
-              {/* 降参 */}
               <Button
                 onClick={() => setShowSurrenderDialog(true)}
                 variant="destructive"
@@ -454,7 +433,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
         )}
       </div>
 
-      {/* 降参確認ダイアログ */}
       <Dialog open={showSurrenderDialog} onOpenChange={setShowSurrenderDialog}>
         <DialogContent>
           <DialogHeader>
@@ -474,7 +452,6 @@ export default function BattlePage({ params }: { params: Promise<{ battleId: str
         </DialogContent>
       </Dialog>
 
-      {/* 結果ダイアログ */}
       <Dialog open={showResultDialog} onOpenChange={setShowResultDialog}>
         <DialogContent>
           <DialogHeader>

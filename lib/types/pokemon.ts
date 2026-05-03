@@ -103,3 +103,19 @@ export interface TurnResult {
     reason: "all-fainted" | "surrender";
   };
 }
+
+// バトルアクションイベント型定義（個別イベント送信用）
+export interface BattleActionEvent {
+  action: TurnAction;
+  battleState: {
+    player1Pokemon: BattlePokemon[];
+    player2Pokemon: BattlePokemon[];
+    player1ActiveIndex: number;
+    player2ActiveIndex: number;
+  };
+  needSwitch?: boolean;
+  battleEnd?: {
+    winnerId: string;
+    reason: "all-fainted" | "surrender";
+  };
+}
