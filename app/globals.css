@@ -48,6 +48,15 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* カスタムユーティリティクラス */
+.flex-6 {
+  flex: 6 1 0%;
+}
+
+.flex-4 {
+  flex: 4 1 0%;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

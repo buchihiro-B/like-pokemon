@@ -50,7 +50,7 @@
         "pp": 15
       }
     ],
-    "imageUrl": "/images/pokemon/pikachu.png"
+    "imageUrl": "/pokemon/pikatyuu.png"
   },
   {
     "id": 2,
@@ -103,7 +103,7 @@
         "pp": 15
       }
     ],
-    "imageUrl": "/images/pokemon/lucario.png"
+    "imageUrl": "/pokemon/rukario.png"
   },
   {
     "id": 3,
@@ -156,7 +156,7 @@
         "pp": 15
       }
     ],
-    "imageUrl": "/images/pokemon/gengar.png"
+    "imageUrl": "/pokemon/gennga.png"
   },
   {
     "id": 4,
@@ -209,7 +209,7 @@
         "pp": 5
       }
     ],
-    "imageUrl": "/images/pokemon/dragonite.png"
+    "imageUrl": "/pokemon/kairyu.png"
   },
   {
     "id": 5,
@@ -262,7 +262,7 @@
         "pp": 5
       }
     ],
-    "imageUrl": "/images/pokemon/sirfetchd.png"
+    "imageUrl": "/pokemon/negiganaito.png"
   },
   {
     "id": 6,
@@ -315,6 +315,6 @@
         "pp": 25
       }
     ],
-    "imageUrl": "/images/pokemon/dracovish.png"
+    "imageUrl": "/pokemon/uonoragon.png"
   }
 ]

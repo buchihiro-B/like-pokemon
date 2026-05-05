@@ -2,10 +2,17 @@
 
 import { useState, useEffect, use, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import {
+  getTypeColor,
+  getTypeTextColor,
+  getTypeEffectiveness,
+  getEffectivenessSymbol,
+} from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +59,9 @@ export default function BattlePage({
   const [showResultDialog, setShowResultDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [commandMenu, setCommandMenu] = useState<"main" | "move" | "pokemon">(
+    "main",
+  );
 
   // バトルログにメッセージを追加
   const addLog = (message: string) => {
@@ -216,6 +226,7 @@ export default function BattlePage({
       setPlayer2State(data.battleState.player2);
       setBattlePhase(data.battleState.phase);
       setNeedSwitchPlayerId(data.battleState.needSwitchPlayerId);
+      setCommandMenu("main");
 
       // ゲーム終了判定
       if (data.gameOver) {
@@ -330,7 +341,7 @@ export default function BattlePage({
   // ローディング
   if (!player1State || !player2State) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-linear-to-b from-purple-100 to-purple-200">
+      <div className="min-h-screen flex items-center justify-center bg-green-50">
         <Card className="p-8">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
           <p className="text-center">バトル準備中...</p>
@@ -357,224 +368,470 @@ export default function BattlePage({
     (battlePhase === "selecting" && selectedCommand !== null);
 
   return (
-    <div className="min-h-screen bg-linear-to-b from-purple-100 to-purple-200 p-4">
-      <div className="max-w-6xl mx-auto">
-        {/* 相手のポケモン表示（Player1の視点ならPlayer2、Player2の視点ならPlayer1） */}
-        <div className="mb-8">
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <h3 className="text-2xl font-bold mb-2">
-                  {isPlayer1
-                    ? player2ActivePokemon?.name
-                    : player1ActivePokemon?.name}
-                </h3>
+    <div className="min-h-screen bg-green-50 p-4">
+      <div className="mx-24 flex flex-col h-[calc(100vh-2rem)]">
+        {/* 戦闘画面（上段・中段） */}
+        <Card className="p-6 mb-4 flex-6 flex flex-col justify-between">
+          {/* 上段：相手のポケモン */}
+          <div className="grid grid-cols-2 gap-4 flex-1 min-h-0 overflow-hidden">
+            {/* 上段左：相手のステータス */}
+            <Card className="p-4 bg-white/50 h-fit">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-2xl font-bold">
+                    {isPlayer1
+                      ? player2ActivePokemon?.name
+                      : player1ActivePokemon?.name}
+                  </h3>
+                  <span className="text-sm text-gray-600">Lv50</span>
+                </div>
                 <div className="flex gap-2 mb-3">
                   {(isPlayer1
                     ? player2ActivePokemon?.types
                     : player1ActivePokemon?.types
                   )?.map((type) => (
-                    <Badge key={type} variant="secondary">
+                    <Badge
+                      key={type}
+                      style={{
+                        backgroundColor: getTypeColor(type),
+                        color: getTypeTextColor(type),
+                      }}
+                    >
                       {type}
                     </Badge>
                   ))}
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">HP:</span>
-                    <Progress
-                      value={
-                        isPlayer1
-                          ? player2ActivePokemon
-                            ? (player2ActivePokemon.currentHp /
-                                player2ActivePokemon.maxHp) *
-                              100
-                            : 0
-                          : player1ActivePokemon
-                            ? (player1ActivePokemon.currentHp /
-                                player1ActivePokemon.maxHp) *
-                              100
-                            : 0
-                      }
-                      className="flex-1"
-                    />
-                    <span className="text-sm">
-                      {isPlayer1
-                        ? `${player2ActivePokemon?.currentHp || 0}/${player2ActivePokemon?.maxHp || 0}`
-                        : `${player1ActivePokemon?.currentHp || 0}/${player1ActivePokemon?.maxHp || 0}`}
-                    </span>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">HP:</span>
+                  <Progress
+                    value={
+                      isPlayer1
+                        ? player2ActivePokemon
+                          ? (player2ActivePokemon.currentHp /
+                              player2ActivePokemon.maxHp) *
+                            100
+                          : 0
+                        : player1ActivePokemon
+                          ? (player1ActivePokemon.currentHp /
+                              player1ActivePokemon.maxHp) *
+                            100
+                          : 0
+                    }
+                    className="flex-1"
+                  />
+                  <span className="text-sm">
+                    {isPlayer1
+                      ? `${player2ActivePokemon?.currentHp || 0}/${player2ActivePokemon?.maxHp || 0}`
+                      : `${player1ActivePokemon?.currentHp || 0}/${player1ActivePokemon?.maxHp || 0}`}
+                  </span>
                 </div>
               </div>
-              <div className="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center ml-4">
-                <span className="text-5xl">👾</span>
-              </div>
+            </Card>
+
+            {/* 上段右：相手の画像 */}
+            <div className="flex items-center justify-center h-full relative">
+              {(isPlayer1 ? player2ActivePokemon : player1ActivePokemon)
+                ?.imageUrl && (
+                <Image
+                  src={
+                    (isPlayer1 ? player2ActivePokemon : player1ActivePokemon)
+                      ?.imageUrl || ""
+                  }
+                  alt={
+                    (isPlayer1 ? player2ActivePokemon : player1ActivePokemon)
+                      ?.name || ""
+                  }
+                  fill
+                  className="object-contain"
+                />
+              )}
             </div>
-          </Card>
-        </div>
+          </div>
 
-        <Card className="p-4 mb-8 max-h-32 overflow-y-auto">
-          {battleLog.slice(-5).map((log, index) => (
-            <p key={index} className="text-sm mb-1">
-              {log}
-            </p>
-          ))}
-        </Card>
+          {/* 中段：自分のポケモン */}
+          <div className="grid grid-cols-2 gap-4 flex-1 min-h-0 overflow-hidden">
+            {/* 中段左：自分の画像 */}
+            <div className="flex items-center justify-center h-full relative">
+              {(isPlayer1 ? player1ActivePokemon : player2ActivePokemon)
+                ?.imageUrl && (
+                <Image
+                  src={
+                    (isPlayer1 ? player1ActivePokemon : player2ActivePokemon)
+                      ?.imageUrl || ""
+                  }
+                  alt={
+                    (isPlayer1 ? player1ActivePokemon : player2ActivePokemon)
+                      ?.name || ""
+                  }
+                  fill
+                  className="object-contain"
+                />
+              )}
+            </div>
 
-        {/* 自分のポケモン表示（Player1の視点ならPlayer1、Player2の視点ならPlayer2） */}
-        <div className="mb-8">
-          <Card className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center mr-4">
-                <span className="text-5xl">🎮</span>
-              </div>
-              <div className="flex-1">
-                <h3 className="text-2xl font-bold mb-2">
-                  {isPlayer1
-                    ? player1ActivePokemon?.name
-                    : player2ActivePokemon?.name}
-                </h3>
+            {/* 中段右：自分のステータス */}
+            <Card className="p-4 bg-white/50 h-fit self-end">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-2xl font-bold">
+                    {isPlayer1
+                      ? player1ActivePokemon?.name
+                      : player2ActivePokemon?.name}
+                  </h3>
+                  <span className="text-sm text-gray-600">Lv50</span>
+                </div>
                 <div className="flex gap-2 mb-3">
                   {(isPlayer1
                     ? player1ActivePokemon?.types
                     : player2ActivePokemon?.types
                   )?.map((type) => (
-                    <Badge key={type} variant="secondary">
+                    <Badge
+                      key={type}
+                      style={{
+                        backgroundColor: getTypeColor(type),
+                        color: getTypeTextColor(type),
+                      }}
+                    >
                       {type}
                     </Badge>
                   ))}
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">HP:</span>
-                    <Progress
-                      value={
-                        isPlayer1
-                          ? player1ActivePokemon
-                            ? (player1ActivePokemon.currentHp /
-                                player1ActivePokemon.maxHp) *
-                              100
-                            : 0
-                          : player2ActivePokemon
-                            ? (player2ActivePokemon.currentHp /
-                                player2ActivePokemon.maxHp) *
-                              100
-                            : 0
-                      }
-                      className="flex-1"
-                    />
-                    <span className="text-sm">
-                      {isPlayer1
-                        ? `${player1ActivePokemon?.currentHp || 0}/${player1ActivePokemon?.maxHp || 0}`
-                        : `${player2ActivePokemon?.currentHp || 0}/${player2ActivePokemon?.maxHp || 0}`}
-                    </span>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">HP:</span>
+                  <Progress
+                    value={
+                      isPlayer1
+                        ? player1ActivePokemon
+                          ? (player1ActivePokemon.currentHp /
+                              player1ActivePokemon.maxHp) *
+                            100
+                          : 0
+                        : player2ActivePokemon
+                          ? (player2ActivePokemon.currentHp /
+                              player2ActivePokemon.maxHp) *
+                            100
+                          : 0
+                    }
+                    className="flex-1"
+                  />
+                  <span className="text-sm">
+                    {isPlayer1
+                      ? `${player1ActivePokemon?.currentHp || 0}/${player1ActivePokemon?.maxHp || 0}`
+                      : `${player2ActivePokemon?.currentHp || 0}/${player2ActivePokemon?.maxHp || 0}`}
+                  </span>
                 </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {isWaiting && (
-          <Card className="p-8">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mx-auto mb-4"></div>
-            <p className="text-center">
-              {needSwitchPlayerId && needSwitchPlayerId !== playerId
-                ? "相手がポケモンを交換しています..."
-                : "相手の行動を待っています..."}
-            </p>
-          </Card>
-        )}
-
-        {canSelectCommand &&
-          (isPlayer1 ? player1ActivePokemon : player2ActivePokemon) && (
-            <Card className="p-6">
-              <h3 className="text-xl font-bold mb-4">
-                コマンドを選択してください
-              </h3>
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="font-semibold mb-2">技</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(isPlayer1
-                      ? player1ActivePokemon
-                      : player2ActivePokemon
-                    )?.moves.map((move, index) => (
-                      <Button
-                        key={index}
-                        onClick={() =>
-                          submitCommand({ type: "move", moveIndex: index })
-                        }
-                        className="h-auto py-3 flex flex-col items-start"
-                      >
-                        <span className="font-bold">{move.name}</span>
-                        <span className="text-xs">
-                          威力: {move.power} / 命中: {move.accuracy}
-                        </span>
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-2">交換</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(isPlayer1 ? player1State : player2State).pokemon.map(
-                      (pokemon, index) =>
-                        index !==
-                          (isPlayer1 ? player1State : player2State)
-                            .activePokemonIndex &&
-                        pokemon.currentHp > 0 && (
-                          <Button
-                            key={index}
-                            onClick={() =>
-                              submitCommand({
-                                type: "switch",
-                                pokemonIndex: index,
-                              })
-                            }
-                            variant="outline"
-                          >
-                            {pokemon.name} (HP: {pokemon.currentHp}/
-                            {pokemon.maxHp})
-                          </Button>
-                        ),
-                    )}
-                  </div>
-                </div>
-
-                <Button
-                  onClick={() => setShowSurrenderDialog(true)}
-                  variant="destructive"
-                  className="w-full"
-                >
-                  降参
-                </Button>
               </div>
             </Card>
-          )}
+          </div>
+        </Card>
 
-        {mustSwitch && (
-          <Card className="p-6">
-            <h3 className="text-xl font-bold mb-4 text-red-600">
-              交換するポケモンを選択してください
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {(isPlayer1 ? player1State : player2State).pokemon.map(
-                (pokemon, index) =>
-                  pokemon.currentHp > 0 &&
-                  index !==
-                    (isPlayer1 ? player1State : player2State)
-                      .activePokemonIndex && (
-                    <Button key={index} onClick={() => handleSwitch(index)}>
-                      {pokemon.name} (HP: {pokemon.currentHp}/{pokemon.maxHp})
-                    </Button>
-                  ),
-              )}
-            </div>
+        {/* 下段：バトルログとコマンド */}
+        <Card className="grid grid-cols-2 gap-4 flex-4 p-4">
+          {/* 下段左：バトルログ */}
+          <Card className="p-4 h-full overflow-y-auto">
+            {battleLog.slice(-5).map((log, index) => (
+              <p key={index} className="text-sm mb-1">
+                {log}
+              </p>
+            ))}
           </Card>
-        )}
+
+          {/* 下段右：コマンド選択 */}
+          <div className="h-full overflow-hidden">
+            {isWaiting && (
+              <Card className="p-8 h-full flex flex-col items-center justify-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mb-4"></div>
+                <p className="text-center">
+                  {needSwitchPlayerId && needSwitchPlayerId !== playerId
+                    ? "相手がポケモンを交換しています..."
+                    : "相手の行動を待っています..."}
+                </p>
+              </Card>
+            )}
+
+            {canSelectCommand &&
+              (isPlayer1 ? player1ActivePokemon : player2ActivePokemon) && (
+                <Card className="p-6 h-full overflow-y-auto">
+                  {commandMenu === "main" && (
+                    <div className="space-y-3">
+                      <h3 className="text-xl font-bold mb-4">
+                        コマンドを選択してください
+                      </h3>
+                      <Button
+                        onClick={() => setCommandMenu("move")}
+                        className="w-full h-16 text-lg font-bold bg-gray-100 hover:bg-gray-200 shadow-md hover:shadow-lg transition-shadow text-black"
+                      >
+                        たたかう
+                      </Button>
+                      <Button
+                        onClick={() => setCommandMenu("pokemon")}
+                        className="w-full h-16 text-lg font-bold bg-gray-100 hover:bg-gray-200 shadow-md hover:shadow-lg transition-shadow text-black"
+                      >
+                        ポケモン
+                      </Button>
+                      <Button
+                        onClick={() => setShowSurrenderDialog(true)}
+                        className="w-full h-16 text-lg font-bold bg-gray-100 hover:bg-gray-200 shadow-md hover:shadow-lg transition-shadow text-black"
+                      >
+                        こうさん
+                      </Button>
+                    </div>
+                  )}
+
+                  {commandMenu === "move" && (
+                    <div className="flex flex-col h-full">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xl font-bold">技を選択</h3>
+                        <Button
+                          onClick={() => setCommandMenu("main")}
+                          size="sm"
+                          className="font-bold bg-gray-100 hover:bg-gray-200 shadow-md hover:shadow-lg transition-shadow text-black"
+                        >
+                          もどる
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 flex-1">
+                        {(isPlayer1
+                          ? player1ActivePokemon
+                          : player2ActivePokemon
+                        )?.moves.map((move, index) => {
+                          const opponentPokemon = isPlayer1
+                            ? player2ActivePokemon
+                            : player1ActivePokemon;
+                          const effectiveness = getTypeEffectiveness(
+                            move.type,
+                            opponentPokemon.types,
+                          );
+                          const effectivenessSymbol =
+                            getEffectivenessSymbol(effectiveness);
+
+                          return (
+                            <Button
+                              key={index}
+                              onClick={() =>
+                                submitCommand({
+                                  type: "move",
+                                  moveIndex: index,
+                                })
+                              }
+                              className="h-full py-3 flex flex-col items-start font-bold shadow-lg hover:shadow-2xl transition-all relative border-b-4 hover:-translate-y-0.5"
+                              style={{
+                                backgroundColor: getTypeColor(move.type),
+                                color: getTypeTextColor(move.type),
+                                borderBottomColor: `${getTypeColor(move.type)}dd`,
+                              }}
+                            >
+                              <div className="flex items-center gap-2 w-full mb-1">
+                                <span className="font-bold">{move.name}</span>
+                                <Badge
+                                  className="text-xs"
+                                  style={{
+                                    backgroundColor: getTypeColor(move.type),
+                                    color: getTypeTextColor(move.type),
+                                    border: `1px solid ${getTypeTextColor(move.type)}`,
+                                  }}
+                                >
+                                  {move.type}
+                                </Badge>
+                                <span className="ml-auto text-xl font-bold">
+                                  {effectivenessSymbol}
+                                </span>
+                              </div>
+                              <span className="text-xs">
+                                【{move.category}】威力：{move.power} / 命中：
+                                {move.accuracy}
+                              </span>
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {commandMenu === "pokemon" && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-xl font-bold">ポケモンを選択</h3>
+                        <Button
+                          onClick={() => setCommandMenu("main")}
+                          size="sm"
+                          className="font-bold bg-gray-100 hover:bg-gray-200 shadow-md hover:shadow-lg transition-shadow text-black"
+                        >
+                          もどる
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(isPlayer1 ? player1State : player2State).pokemon.map(
+                          (pokemon, index) => {
+                            const isActive =
+                              index ===
+                              (isPlayer1 ? player1State : player2State)
+                                .activePokemonIndex;
+                            const isFainted = pokemon.currentHp === 0;
+
+                            if (isActive) return null;
+
+                            return (
+                              <Button
+                                key={index}
+                                onClick={() => {
+                                  if (!isFainted) {
+                                    submitCommand({
+                                      type: "switch",
+                                      pokemonIndex: index,
+                                    });
+                                  }
+                                }}
+                                disabled={isFainted}
+                                className={`h-auto py-3 flex flex-col items-start font-bold shadow-md hover:shadow-lg transition-shadow text-black ${
+                                  isFainted
+                                    ? "bg-red-200 cursor-not-allowed opacity-60"
+                                    : "bg-gray-100 hover:bg-gray-200"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 w-full mb-1">
+                                  <span className="font-bold">
+                                    {pokemon.name}
+                                  </span>
+                                  {pokemon.types.map((type, i) => (
+                                    <Badge
+                                      key={i}
+                                      className="text-xs"
+                                      style={{
+                                        backgroundColor: getTypeColor(type),
+                                        color: getTypeTextColor(type),
+                                      }}
+                                    >
+                                      {type}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <span className="text-xs mb-1">
+                                  HP: {pokemon.currentHp}/{pokemon.maxHp}
+                                </span>
+                                <div className="text-xs grid grid-cols-2 gap-x-2 gap-y-1 w-full">
+                                  <span className="inline-flex">
+                                    <span className="inline-block min-w-16 text-right">
+                                      攻　撃：
+                                    </span>
+                                    {pokemon.stats.attack}
+                                  </span>
+                                  <span className="inline-flex">
+                                    <span className="inline-block min-w-16 text-right">
+                                      防　御：
+                                    </span>
+                                    {pokemon.stats.defense}
+                                  </span>
+                                  <span className="inline-flex">
+                                    <span className="inline-block min-w-16 text-right">
+                                      特　攻：
+                                    </span>
+                                    {pokemon.stats.spAttack}
+                                  </span>
+                                  <span className="inline-flex">
+                                    <span className="inline-block min-w-16 text-right">
+                                      特　防：
+                                    </span>
+                                    {pokemon.stats.spDefense}
+                                  </span>
+                                  <span className="inline-flex">
+                                    <span className="inline-block min-w-16 text-right">
+                                      素早さ：
+                                    </span>
+                                    {pokemon.stats.speed}
+                                  </span>
+                                </div>
+                              </Button>
+                            );
+                          },
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )}
+
+            {mustSwitch && (
+              <Card className="p-6 h-full overflow-y-auto">
+                <h3 className="text-xl font-bold mb-4 text-red-600">
+                  交換するポケモンを選択してください
+                </h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {(isPlayer1 ? player1State : player2State).pokemon.map(
+                    (pokemon, index) => {
+                      const isActive =
+                        index ===
+                        (isPlayer1 ? player1State : player2State)
+                          .activePokemonIndex;
+                      const isFainted = pokemon.currentHp === 0;
+
+                      if (isActive || isFainted) return null;
+
+                      return (
+                        <Button
+                          key={index}
+                          onClick={() => handleSwitch(index)}
+                          className="h-auto py-3 flex flex-col items-start font-bold bg-gray-100 hover:bg-gray-200 shadow-md hover:shadow-lg transition-shadow text-black"
+                        >
+                          <div className="flex items-center gap-2 w-full mb-1">
+                            <span className="font-bold">{pokemon.name}</span>
+                            {pokemon.types.map((type, i) => (
+                              <Badge
+                                key={i}
+                                className="text-xs"
+                                style={{
+                                  backgroundColor: getTypeColor(type),
+                                  color: getTypeTextColor(type),
+                                }}
+                              >
+                                {type}
+                              </Badge>
+                            ))}
+                          </div>
+                          <span className="text-xs mb-1">
+                            HP: {pokemon.currentHp}/{pokemon.maxHp}
+                          </span>
+                          <div className="text-xs grid grid-cols-2 gap-x-2 gap-y-1 w-full">
+                            <span className="inline-flex">
+                              <span className="inline-block min-w-16 text-right">
+                                攻　撃：
+                              </span>
+                              {pokemon.stats.attack}
+                            </span>
+                            <span className="inline-flex">
+                              <span className="inline-block min-w-16 text-right">
+                                防　御：
+                              </span>
+                              {pokemon.stats.defense}
+                            </span>
+                            <span className="inline-flex">
+                              <span className="inline-block min-w-16 text-right">
+                                特　攻：
+                              </span>
+                              {pokemon.stats.spAttack}
+                            </span>
+                            <span className="inline-flex">
+                              <span className="inline-block min-w-16 text-right">
+                                特　防：
+                              </span>
+                              {pokemon.stats.spDefense}
+                            </span>
+                            <span className="inline-flex">
+                              <span className="inline-block min-w-16 text-right">
+                                素早さ：
+                              </span>
+                              {pokemon.stats.speed}
+                            </span>
+                          </div>
+                        </Button>
+                      );
+                    },
+                  )}
+                </div>
+              </Card>
+            )}
+          </div>
+        </Card>
       </div>
 
       <Dialog open={showSurrenderDialog} onOpenChange={setShowSurrenderDialog}>

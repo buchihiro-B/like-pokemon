@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getAllPokemon } from "@/lib/pokemon-data";
 import { getPusherClient } from "@/lib/pusher";
+import { getTypeColor, getTypeTextColor } from "@/lib/utils";
 
 export default function PokemonSelectionPage() {
   const router = useRouter();
@@ -174,7 +175,13 @@ export default function PokemonSelectionPage() {
 
                   <div className="flex gap-2 mb-3">
                     {pokemon.types.map((type) => (
-                      <Badge key={type} variant="secondary">
+                      <Badge
+                        key={type}
+                        style={{
+                          backgroundColor: getTypeColor(type),
+                          color: getTypeTextColor(type),
+                        }}
+                      >
                         {type}
                       </Badge>
                     ))}
