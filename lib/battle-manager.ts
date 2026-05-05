@@ -1,15 +1,16 @@
-import { BattlePokemon, BattleCommand, BattlePhase } from './types/pokemon';
+import { BattlePokemon, BattleCommand, BattlePhase } from "./types/pokemon";
+
+export interface PlayerBattleState {
+  id: string;
+  pokemon: BattlePokemon[];
+  activeIndex: number;
+  command: BattleCommand | null;
+}
 
 interface BattleState {
   battleId: string;
-  player1Id: string;
-  player2Id: string;
-  player1Pokemon: BattlePokemon[];
-  player2Pokemon: BattlePokemon[];
-  player1ActiveIndex: number;
-  player2ActiveIndex: number;
-  player1Command: BattleCommand | null;
-  player2Command: BattleCommand | null;
+  player1: PlayerBattleState;
+  player2: PlayerBattleState;
   turn: number;
   winnerId: string | null;
   phase: BattlePhase;
@@ -24,21 +25,25 @@ class BattleManager {
     player1Id: string,
     player2Id: string,
     player1Pokemon: BattlePokemon[],
-    player2Pokemon: BattlePokemon[]
+    player2Pokemon: BattlePokemon[],
   ): void {
     this.battles.set(battleId, {
       battleId,
-      player1Id,
-      player2Id,
-      player1Pokemon,
-      player2Pokemon,
-      player1ActiveIndex: 0,
-      player2ActiveIndex: 0,
-      player1Command: null,
-      player2Command: null,
+      player1: {
+        id: player1Id,
+        pokemon: player1Pokemon,
+        activeIndex: 0,
+        command: null,
+      },
+      player2: {
+        id: player2Id,
+        pokemon: player2Pokemon,
+        activeIndex: 0,
+        command: null,
+      },
       turn: 1,
       winnerId: null,
-      phase: 'selecting',
+      phase: "selecting",
       needSwitchPlayerId: null,
     });
   }
@@ -51,10 +56,10 @@ class BattleManager {
     const battle = this.battles.get(battleId);
     if (!battle) return;
 
-    if (battle.player1Id === playerId) {
-      battle.player1Command = command;
-    } else if (battle.player2Id === playerId) {
-      battle.player2Command = command;
+    if (battle.player1.id === playerId) {
+      battle.player1.command = command;
+    } else if (battle.player2.id === playerId) {
+      battle.player2.command = command;
     }
 
     this.battles.set(battleId, battle);
@@ -65,17 +70,17 @@ class BattleManager {
     if (!battle) return false;
 
     // action フェーズかつ強制交代中の場合、該当プレイヤーのコマンドのみ確認
-    if (battle.phase === 'action' && battle.needSwitchPlayerId) {
-      if (battle.needSwitchPlayerId === battle.player1Id) {
-        return battle.player1Command !== null;
+    if (battle.phase === "action" && battle.needSwitchPlayerId) {
+      if (battle.needSwitchPlayerId === battle.player1.id) {
+        return battle.player1.command !== null;
       }
-      if (battle.needSwitchPlayerId === battle.player2Id) {
-        return battle.player2Command !== null;
+      if (battle.needSwitchPlayerId === battle.player2.id) {
+        return battle.player2.command !== null;
       }
     }
 
     // 通常のコマンド選択時は両方必要
-    return battle.player1Command !== null && battle.player2Command !== null;
+    return battle.player1.command !== null && battle.player2.command !== null;
   }
 
   updateBattle(battleId: string, updates: Partial<BattleState>): void {

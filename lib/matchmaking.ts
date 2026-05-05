@@ -1,4 +1,4 @@
-import { Pokemon } from './types/pokemon';
+import { Pokemon } from "./types/pokemon";
 
 interface QueuedPlayer {
   playerId: string;
@@ -13,8 +13,8 @@ class MatchmakingManager {
   // キューに参加
   joinQueue(playerId: string, selectedPokemon: Pokemon[]): void {
     // 既にキューにいる場合は削除
-    this.queue = this.queue.filter(p => p.playerId !== playerId);
-    
+    this.queue = this.queue.filter((p) => p.playerId !== playerId);
+
     this.queue.push({
       playerId,
       selectedPokemon,
@@ -24,11 +24,15 @@ class MatchmakingManager {
 
   // キューから退出
   leaveQueue(playerId: string): void {
-    this.queue = this.queue.filter(p => p.playerId !== playerId);
+    this.queue = this.queue.filter((p) => p.playerId !== playerId);
   }
 
   // マッチング試行
-  tryMatch(): { player1: QueuedPlayer; player2: QueuedPlayer } | null {
+  tryMatch(): {
+    battleId: string;
+    player1: QueuedPlayer;
+    player2: QueuedPlayer;
+  } | null {
     if (this.queue.length < 2) {
       return null;
     }
@@ -44,7 +48,7 @@ class MatchmakingManager {
     const battleId = `battle-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     this.activeMatches.set(battleId, [player1.playerId, player2.playerId]);
 
-    return { player1, player2 };
+    return { battleId, player1, player2 };
   }
 
   // キューのサイズを取得
