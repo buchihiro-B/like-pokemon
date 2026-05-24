@@ -6,7 +6,15 @@
     "category": "特殊",
     "power": 90,
     "accuracy": 100,
-    "pp": 15
+    "pp": 15,
+    "effects": [
+      {
+        "type": "status",
+        "status": "まひ",
+        "chance": 10,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 2,
@@ -15,7 +23,8 @@
     "category": "物理",
     "power": 40,
     "accuracy": 100,
-    "pp": 30
+    "pp": 30,
+    "priority": 1
   },
   {
     "id": 3,
@@ -24,7 +33,16 @@
     "category": "物理",
     "power": 100,
     "accuracy": 75,
-    "pp": 15
+    "pp": 15,
+    "effects": [
+      {
+        "type": "statChange",
+        "stat": "defense",
+        "stages": -1,
+        "chance": 30,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 4,
@@ -33,7 +51,16 @@
     "category": "特殊",
     "power": 55,
     "accuracy": 95,
-    "pp": 15
+    "pp": 15,
+    "effects": [
+      {
+        "type": "statChange",
+        "stat": "speed",
+        "stages": -1,
+        "chance": 100,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 5,
@@ -51,7 +78,8 @@
     "category": "物理",
     "power": 40,
     "accuracy": 100,
-    "pp": 30
+    "pp": 30,
+    "priority": 1
   },
   {
     "id": 7,
@@ -60,7 +88,16 @@
     "category": "変化",
     "power": 0,
     "accuracy": 100,
-    "pp": 15
+    "pp": 15,
+    "effects": [
+      {
+        "type": "statChange",
+        "stat": "evasion",
+        "stages": 1,
+        "chance": 100,
+        "target": "self"
+      }
+    ]
   },
   {
     "id": 8,
@@ -69,7 +106,8 @@
     "category": "物理",
     "power": 1,
     "accuracy": 100,
-    "pp": 15
+    "pp": 15,
+    "customLogic": "reversal"
   },
   {
     "id": 9,
@@ -78,7 +116,16 @@
     "category": "特殊",
     "power": 80,
     "accuracy": 100,
-    "pp": 15
+    "pp": 15,
+    "effects": [
+      {
+        "type": "statChange",
+        "stat": "spDefense",
+        "stages": -1,
+        "chance": 20,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 10,
@@ -87,7 +134,15 @@
     "category": "特殊",
     "power": 90,
     "accuracy": 100,
-    "pp": 10
+    "pp": 10,
+    "effects": [
+      {
+        "type": "status",
+        "status": "どく",
+        "chance": 30,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 11,
@@ -105,7 +160,15 @@
     "category": "変化",
     "power": 0,
     "accuracy": 85,
-    "pp": 15
+    "pp": 15,
+    "effects": [
+      {
+        "type": "status",
+        "status": "やけど",
+        "chance": 100,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 13,
@@ -114,7 +177,23 @@
     "category": "変化",
     "power": 0,
     "accuracy": 100,
-    "pp": 20
+    "pp": 20,
+    "effects": [
+      {
+        "type": "statChange",
+        "stat": "attack",
+        "stages": 1,
+        "chance": 100,
+        "target": "self"
+      },
+      {
+        "type": "statChange",
+        "stat": "speed",
+        "stages": 1,
+        "chance": 100,
+        "target": "self"
+      }
+    ]
   },
   {
     "id": 14,
@@ -141,7 +220,16 @@
     "category": "特殊",
     "power": 130,
     "accuracy": 90,
-    "pp": 5
+    "pp": 5,
+    "effects": [
+      {
+        "type": "statChange",
+        "stat": "spAttack",
+        "stages": -2,
+        "chance": 100,
+        "target": "self"
+      }
+    ]
   },
   {
     "id": 17,
@@ -150,7 +238,14 @@
     "category": "物理",
     "power": 150,
     "accuracy": 100,
-    "pp": 5
+    "pp": 5,
+    "effects": [
+      {
+        "type": "recharge",
+        "target": "self",
+        "chance": 100
+      }
+    ]
   },
   {
     "id": 18,
@@ -168,7 +263,8 @@
     "category": "物理",
     "power": 40,
     "accuracy": 95,
-    "pp": 20
+    "pp": 20,
+    "customLogic": "consecutiveCut"
   },
   {
     "id": 20,
@@ -177,7 +273,14 @@
     "category": "変化",
     "power": 0,
     "accuracy": 100,
-    "pp": 5
+    "pp": 5,
+    "effects": [
+      {
+        "type": "protect",
+        "target": "self",
+        "chance": 100
+      }
+    ]
   },
   {
     "id": 21,
@@ -186,7 +289,8 @@
     "category": "物理",
     "power": 85,
     "accuracy": 100,
-    "pp": 10
+    "pp": 10,
+    "customLogic": "fishiousRend"
   },
   {
     "id": 22,
@@ -195,7 +299,15 @@
     "category": "物理",
     "power": 100,
     "accuracy": 75,
-    "pp": 10
+    "pp": 10,
+    "effects": [
+      {
+        "type": "status",
+        "status": "ひるみ",
+        "chance": 20,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 23,
@@ -204,7 +316,21 @@
     "category": "物理",
     "power": 65,
     "accuracy": 95,
-    "pp": 15
+    "pp": 15,
+    "effects": [
+      {
+        "type": "status",
+        "status": "こおり",
+        "chance": 10,
+        "target": "opponent"
+      },
+      {
+        "type": "status",
+        "status": "ひるみ",
+        "chance": 10,
+        "target": "opponent"
+      }
+    ]
   },
   {
     "id": 24,

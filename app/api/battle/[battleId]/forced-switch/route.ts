@@ -24,7 +24,7 @@ function buildBattleState(battle: {
   };
   turn: number;
   phase: import("@/lib/types/pokemon").BattlePhase;
-  needSwitchPlayerId: string | null;
+  needSwitchPlayerId: string[];
 }): BattleState {
   const player1: PlayerState = {
     id: battle.player1.id,
@@ -64,14 +64,14 @@ export async function POST(
       return NextResponse.json({ error: "Battle not found" }, { status: 404 });
     }
 
-    if (!battle.needSwitchPlayerId) {
+    if (battle.needSwitchPlayerId.length === 0) {
       return NextResponse.json(
         { error: "No forced switch required" },
         { status: 400 },
       );
     }
 
-    if (battle.needSwitchPlayerId !== playerId) {
+    if (!battle.needSwitchPlayerId.includes(playerId)) {
       return NextResponse.json(
         { error: "Not your turn to switch" },
         { status: 403 },
@@ -87,29 +87,36 @@ export async function POST(
 
     const turnEvents: TurnEvent[] = [];
 
-    if (battle.needSwitchPlayerId === battle.player1.id) {
+    if (battle.player1.id === playerId) {
       battle.player1.activeIndex = pokemonIndex;
     } else {
       battle.player2.activeIndex = pokemonIndex;
     }
 
     const switchedPokemonArray =
-      battle.needSwitchPlayerId === battle.player1.id
+      battle.player1.id === playerId
         ? battle.player1.pokemon
         : battle.player2.pokemon;
 
     turnEvents.push({
       type: "switch",
-      player: battle.needSwitchPlayerId,
+      player: playerId,
       pokemonName: switchedPokemonArray[pokemonIndex].name,
       pokemonIndex: pokemonIndex,
     });
 
-    battle.phase = "selecting";
-    battle.needSwitchPlayerId = null;
-    battle.turn += 1;
-    battle.player1.command = null;
-    battle.player2.command = null;
+    // 交代完了したプレイヤーIDを配列から削除
+    battle.needSwitchPlayerId = battle.needSwitchPlayerId.filter(
+      (id) => id !== playerId,
+    );
+
+    // 全員の交代が完了したら次のターンへ
+    if (battle.needSwitchPlayerId.length === 0) {
+      battle.phase = "selecting";
+      battle.turn += 1;
+      battle.player1.command = null;
+      battle.player2.command = null;
+    }
 
     const battleState = buildBattleState(battle);
     const turnResult: TurnResult = {

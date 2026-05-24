@@ -12,44 +12,7 @@
       "speed": 110
     },
     "ability": "せいでんき",
-    "moves": [
-      {
-        "id": 1,
-        "name": "10まんボルト",
-        "type": "でんき",
-        "category": "特殊",
-        "power": 90,
-        "accuracy": 100,
-        "pp": 15
-      },
-      {
-        "id": 2,
-        "name": "でんこうせっか",
-        "type": "ノーマル",
-        "category": "物理",
-        "power": 40,
-        "accuracy": 100,
-        "pp": 30
-      },
-      {
-        "id": 3,
-        "name": "アイアンテール",
-        "type": "はがね",
-        "category": "物理",
-        "power": 100,
-        "accuracy": 75,
-        "pp": 15
-      },
-      {
-        "id": 4,
-        "name": "エレキネット",
-        "type": "でんき",
-        "category": "特殊",
-        "power": 55,
-        "accuracy": 95,
-        "pp": 15
-      }
-    ],
+    "moveIds": [1, 2, 3, 4],
     "imageUrl": "/pokemon/pikatyuu.png"
   },
   {
@@ -65,44 +28,7 @@
       "speed": 110
     },
     "ability": "せいしんりょく",
-    "moves": [
-      {
-        "id": 5,
-        "name": "はどうだん",
-        "type": "かくとう",
-        "category": "特殊",
-        "power": 80,
-        "accuracy": 100,
-        "pp": 20
-      },
-      {
-        "id": 6,
-        "name": "バレットパンチ",
-        "type": "はがね",
-        "category": "物理",
-        "power": 40,
-        "accuracy": 100,
-        "pp": 30
-      },
-      {
-        "id": 7,
-        "name": "かげぶんしん",
-        "type": "ノーマル",
-        "category": "変化",
-        "power": 0,
-        "accuracy": 100,
-        "pp": 15
-      },
-      {
-        "id": 8,
-        "name": "きしかいせい",
-        "type": "かくとう",
-        "category": "物理",
-        "power": 1,
-        "accuracy": 100,
-        "pp": 15
-      }
-    ],
+    "moveIds": [5, 6, 7, 8],
     "imageUrl": "/pokemon/rukario.png"
   },
   {
@@ -118,44 +44,7 @@
       "speed": 130
     },
     "ability": "のろわれボディ",
-    "moves": [
-      {
-        "id": 9,
-        "name": "シャドーボール",
-        "type": "ゴースト",
-        "category": "特殊",
-        "power": 80,
-        "accuracy": 100,
-        "pp": 15
-      },
-      {
-        "id": 10,
-        "name": "ヘドロばくだん",
-        "type": "どく",
-        "category": "特殊",
-        "power": 90,
-        "accuracy": 100,
-        "pp": 10
-      },
-      {
-        "id": 11,
-        "name": "マジカルシャイン",
-        "type": "フェアリー",
-        "category": "特殊",
-        "power": 80,
-        "accuracy": 100,
-        "pp": 10
-      },
-      {
-        "id": 12,
-        "name": "おにび",
-        "type": "ほのお",
-        "category": "変化",
-        "power": 0,
-        "accuracy": 85,
-        "pp": 15
-      }
-    ],
+    "moveIds": [9, 10, 11, 12],
     "imageUrl": "/pokemon/gennga.png"
   },
   {
@@ -171,44 +60,7 @@
       "speed": 100
     },
     "ability": "マルチスケイル",
-    "moves": [
-      {
-        "id": 13,
-        "name": "りゅうのまい",
-        "type": "ドラゴン",
-        "category": "変化",
-        "power": 0,
-        "accuracy": 100,
-        "pp": 20
-      },
-      {
-        "id": 14,
-        "name": "ドラゴンクロー",
-        "type": "ドラゴン",
-        "category": "物理",
-        "power": 80,
-        "accuracy": 100,
-        "pp": 15
-      },
-      {
-        "id": 15,
-        "name": "ぼうふう",
-        "type": "ひこう",
-        "category": "特殊",
-        "power": 110,
-        "accuracy": 70,
-        "pp": 10
-      },
-      {
-        "id": 16,
-        "name": "りゅうせいぐん",
-        "type": "ドラゴン",
-        "category": "特殊",
-        "power": 130,
-        "accuracy": 90,
-        "pp": 5
-      }
-    ],
+    "moveIds": [13, 14, 15, 16],
     "imageUrl": "/pokemon/kairyu.png"
   },
   {
@@ -224,44 +76,7 @@
       "speed": 85
     },
     "ability": "ふくつのこころ",
-    "moves": [
-      {
-        "id": 17,
-        "name": "スターアサルト",
-        "type": "かくとう",
-        "category": "物理",
-        "power": 150,
-        "accuracy": 100,
-        "pp": 5
-      },
-      {
-        "id": 18,
-        "name": "ぶんまわす",
-        "type": "あく",
-        "category": "物理",
-        "power": 60,
-        "accuracy": 100,
-        "pp": 20
-      },
-      {
-        "id": 19,
-        "name": "れんぞくぎり",
-        "type": "むし",
-        "category": "物理",
-        "power": 40,
-        "accuracy": 95,
-        "pp": 20
-      },
-      {
-        "id": 20,
-        "name": "みきり",
-        "type": "かくとう",
-        "category": "変化",
-        "power": 0,
-        "accuracy": 100,
-        "pp": 5
-      }
-    ],
+    "moveIds": [17, 18, 19, 20],
     "imageUrl": "/pokemon/negiganaito.png"
   },
   {
@@ -277,44 +92,7 @@
       "speed": 95
     },
     "ability": "がんじょうあご",
-    "moves": [
-      {
-        "id": 21,
-        "name": "エラがみ",
-        "type": "みず",
-        "category": "物理",
-        "power": 85,
-        "accuracy": 100,
-        "pp": 10
-      },
-      {
-        "id": 22,
-        "name": "ドラゴンダイブ",
-        "type": "ドラゴン",
-        "category": "物理",
-        "power": 100,
-        "accuracy": 75,
-        "pp": 10
-      },
-      {
-        "id": 23,
-        "name": "こおりのキバ",
-        "type": "こおり",
-        "category": "物理",
-        "power": 65,
-        "accuracy": 95,
-        "pp": 15
-      },
-      {
-        "id": 24,
-        "name": "みずでっぽう",
-        "type": "みず",
-        "category": "特殊",
-        "power": 40,
-        "accuracy": 100,
-        "pp": 25
-      }
-    ],
+    "moveIds": [21, 22, 23, 24],
     "imageUrl": "/pokemon/uonoragon.png"
   }
 ]

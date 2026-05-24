@@ -7,15 +7,17 @@ export interface PlayerBattleState {
   command: BattleCommand | null;
 }
 
-interface BattleState {
+export interface InternalBattleState {
   battleId: string;
   player1: PlayerBattleState;
   player2: PlayerBattleState;
   turn: number;
-  winnerId: string | null;
   phase: BattlePhase;
-  needSwitchPlayerId: string | null;
+  needSwitchPlayerId: string[];
 }
+
+// 内部でのみ使用する型エイリアス
+type BattleState = InternalBattleState;
 
 class BattleManager {
   private battles: Map<string, BattleState> = new Map();
@@ -42,9 +44,8 @@ class BattleManager {
         command: null,
       },
       turn: 1,
-      winnerId: null,
       phase: "selecting",
-      needSwitchPlayerId: null,
+      needSwitchPlayerId: [],
     });
   }
 
@@ -70,13 +71,17 @@ class BattleManager {
     if (!battle) return false;
 
     // action フェーズかつ強制交代中の場合、該当プレイヤーのコマンドのみ確認
-    if (battle.phase === "action" && battle.needSwitchPlayerId) {
-      if (battle.needSwitchPlayerId === battle.player1.id) {
-        return battle.player1.command !== null;
-      }
-      if (battle.needSwitchPlayerId === battle.player2.id) {
-        return battle.player2.command !== null;
-      }
+    if (battle.phase === "action" && battle.needSwitchPlayerId.length > 0) {
+      // 交代が必要なプレイヤー全員のコマンドを確認
+      return battle.needSwitchPlayerId.every((playerId) => {
+        if (playerId === battle.player1.id) {
+          return battle.player1.command !== null;
+        }
+        if (playerId === battle.player2.id) {
+          return battle.player2.command !== null;
+        }
+        return false;
+      });
     }
 
     // 通常のコマンド選択時は両方必要
@@ -98,11 +103,11 @@ class BattleManager {
     this.battles.set(battleId, battle);
   }
 
-  setNeedSwitch(battleId: string, playerId: string | null): void {
+  setNeedSwitch(battleId: string, playerIds: string[]): void {
     const battle = this.battles.get(battleId);
     if (!battle) return;
 
-    battle.needSwitchPlayerId = playerId;
+    battle.needSwitchPlayerId = playerIds;
     this.battles.set(battleId, battle);
   }
 

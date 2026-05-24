@@ -28,6 +28,7 @@ import {
   PlayerState,
 } from "@/lib/types/pokemon";
 import { getPusherClient } from "@/lib/pusher";
+import { MESSAGES, STAT_NAMES, formatMessage } from "@/lib/messages";
 
 export default function BattlePage({
   params,
@@ -47,9 +48,7 @@ export default function BattlePage({
   const [battlePhase, setBattlePhase] = useState<
     "waiting" | "selecting" | "action" | "finished"
   >("waiting");
-  const [needSwitchPlayerId, setNeedSwitchPlayerId] = useState<string | null>(
-    null,
-  );
+  const [needSwitchPlayerId, setNeedSwitchPlayerId] = useState<string[]>([]);
   const [battleLog, setBattleLog] = useState<string[]>([]);
   const [selectedCommand, setSelectedCommand] = useState<BattleCommand | null>(
     null,
@@ -78,36 +77,121 @@ export default function BattlePage({
     async (event: TurnEvent) => {
       // 技の使用イベント
       if (event.type === "move") {
-        const attackerName = event.attackerName;
+        // 技使用メッセージ
+        addLog(
+          formatMessage(MESSAGES.MOVE_USE, {
+            attackerName: event.attackerName,
+            moveName: event.moveName,
+          }),
+        );
 
-        let message = `${attackerName}の${event.moveName}！`;
+        // 攻撃が外れた場合（effectivenessが0）
+        if (event.effectiveness === 0) {
+          addLog(MESSAGES.MOVE_MISS);
+        }
+        // 効果技が命中した場合
+        else if (event.damage === 0) {
+          // 型ガード
+          if (event.effects === undefined) {
+            return;
+          }
 
-        // ダメージが0の場合
-        if (event.damage === 0) {
-          message += " しかし攻撃は外れた！";
-        } else {
+          for (const effect of event.effects) {
+            // 状態異常付与の場合
+            if (effect.type === "status") {
+              addLog(
+                formatMessage(MESSAGES.STATUS_INFLICTED, {
+                  target: effect.target,
+                  status: effect.status,
+                }),
+              );
+            }
+            // ステータス変化の場合
+            else if (effect.type === "statChange") {
+              if (effect.success) {
+                const changeStage = effect.newStage - effect.oldStage;
+                const statName = STAT_NAMES[effect.stat] || effect.stat;
+                if (changeStage === 0) {
+                  addLog(
+                    formatMessage(MESSAGES.STAT_NO_CHANGE, {
+                      target: effect.target,
+                      stat: statName,
+                    }),
+                  );
+                } else if (changeStage === 2) {
+                  addLog(
+                    formatMessage(MESSAGES.STAT_UP_2, {
+                      target: effect.target,
+                      stat: statName,
+                    }),
+                  );
+                } else if (changeStage === 1) {
+                  addLog(
+                    formatMessage(MESSAGES.STAT_UP_1, {
+                      target: effect.target,
+                      stat: statName,
+                    }),
+                  );
+                } else if (changeStage === -1) {
+                  addLog(
+                    formatMessage(MESSAGES.STAT_DOWN_1, {
+                      target: effect.target,
+                      stat: statName,
+                    }),
+                  );
+                } else if (changeStage === -2) {
+                  addLog(
+                    formatMessage(MESSAGES.STAT_DOWN_2, {
+                      target: effect.target,
+                      stat: statName,
+                    }),
+                  );
+                }
+              } else {
+                addLog(MESSAGES.EFFECT_FAILED);
+              }
+            }
+            // その他の効果の場合
+            else {
+              addLog(
+                formatMessage(MESSAGES.OTHER_EFFECT, {
+                  target: effect.target,
+                  effectType: effect.type,
+                }),
+              );
+            }
+          }
+        }
+        // 威力技が命中した場合
+        else {
           // 急所の場合
           if (event.isCritical) {
-            message += " 急所に当たった！";
+            addLog(MESSAGES.CRITICAL_HIT);
           }
 
           // 効果抜群の場合
           if (event.effectiveness > 1) {
-            message += " 効果は抜群だ！";
+            addLog(MESSAGES.SUPER_EFFECTIVE);
           }
           // 効果いまひとつの場合
-          else if (event.effectiveness < 1 && event.effectiveness > 0) {
-            message += " 効果はいまひとつのようだ...";
+          else if (event.effectiveness < 1) {
+            addLog(MESSAGES.NOT_VERY_EFFECTIVE);
           }
 
-          message += ` ${event.damage}のダメージ！`;
+          addLog(
+            formatMessage(MESSAGES.DAMAGE, {
+              damage: event.damage.toString(),
+            }),
+          );
         }
-
-        addLog(message);
 
         // ポケモンが倒れた場合
         if (event.fainted) {
-          addLog(`${event.defenderName}は倒れた！`);
+          addLog(
+            formatMessage(MESSAGES.FAINTED, {
+              pokemonName: event.defenderName,
+            }),
+          );
         }
 
         await sleep(800);
@@ -118,10 +202,37 @@ export default function BattlePage({
 
         // 自分が交換する場合
         if (isMine) {
-          addLog(`${event.pokemonName}に交換した！`);
+          addLog(
+            formatMessage(MESSAGES.SWITCH_MINE, {
+              pokemonName: event.pokemonName,
+            }),
+          );
         } else {
-          addLog(`相手は${event.pokemonName}に交換した！`);
+          addLog(
+            formatMessage(MESSAGES.SWITCH_OPPONENT, {
+              pokemonName: event.pokemonName,
+            }),
+          );
         }
+        await sleep(600);
+      }
+      // 状態異常ダメージイベント
+      else if (event.type === "statusDamage") {
+        addLog(
+          formatMessage(MESSAGES.STATUS_DAMAGE, {
+            pokemonName: event.pokemonName,
+            status: event.status,
+          }),
+        );
+
+        if (event.fainted) {
+          addLog(
+            formatMessage(MESSAGES.FAINTED, {
+              pokemonName: event.pokemonName,
+            }),
+          );
+        }
+
         await sleep(600);
       }
     },
@@ -158,7 +269,7 @@ export default function BattlePage({
           setPlayer1State(p1State);
           setPlayer2State(p2State);
           setBattlePhase("selecting");
-          addLog("バトル開始！");
+          addLog(MESSAGES.BATTLE_START);
         } else {
           console.error("[Battle Init] Failed to fetch:", response.status);
           // バトルルームを解散
@@ -237,9 +348,11 @@ export default function BattlePage({
 
         const iWon = data.gameOver.winnerId === playerId;
         if (data.gameOver.reason === "surrender") {
-          addLog(iWon ? "相手が降参した！" : "あなたは降参した");
+          addLog(
+            iWon ? MESSAGES.OPPONENT_SURRENDERED : MESSAGES.YOU_SURRENDERED,
+          );
         } else {
-          addLog(iWon ? "あなたの勝利！" : "あなたの敗北...");
+          addLog(iWon ? MESSAGES.VICTORY : MESSAGES.DEFEAT);
         }
         return;
       }
@@ -247,17 +360,17 @@ export default function BattlePage({
       // 行動フェーズかつポケモンを交代する場合
       if (
         data.battleState.phase === "action" &&
-        data.battleState.needSwitchPlayerId
+        data.battleState.needSwitchPlayerId.length > 0
       ) {
-        if (data.battleState.needSwitchPlayerId === playerId) {
-          addLog("次のポケモンを選択してください");
+        if (data.battleState.needSwitchPlayerId.includes(playerId)) {
+          addLog(MESSAGES.SELECT_NEXT_POKEMON);
         } else {
-          addLog("相手がポケモンを交換しています...");
+          addLog(MESSAGES.OPPONENT_SWITCHING);
         }
       }
       // コマンド選択フェーズの場合
       else if (data.battleState.phase === "selecting") {
-        addLog("コマンドを選択してください");
+        addLog(MESSAGES.SELECT_COMMAND);
       }
     });
 
@@ -293,7 +406,7 @@ export default function BattlePage({
 
       if (response.ok) {
         console.log("[Command] Command submitted successfully");
-        addLog("相手の行動を待っています...");
+        addLog(MESSAGES.WAITING_FOR_OPPONENT);
       } else {
         console.error("[Command] Failed to submit:", response.status);
         setSelectedCommand(null);
@@ -308,7 +421,7 @@ export default function BattlePage({
   const handleSwitch = async (pokemonIndex: number) => {
     console.log("[Switch] Switching to pokemon:", pokemonIndex);
 
-    if (needSwitchPlayerId === playerId) {
+    if (needSwitchPlayerId.includes(playerId)) {
       try {
         const response = await fetch(`/api/battle/${battleId}/forced-switch`, {
           method: "POST",
@@ -360,11 +473,13 @@ export default function BattlePage({
 
   // 強制交代判定
   const mustSwitch =
-    battlePhase === "action" && needSwitchPlayerId === playerId;
+    battlePhase === "action" && needSwitchPlayerId.includes(playerId);
 
   // 待機中（相手の行動待ちまたはアニメーション中）
   const isWaiting =
-    (battlePhase === "action" && needSwitchPlayerId !== playerId) ||
+    (battlePhase === "action" &&
+      needSwitchPlayerId.length > 0 &&
+      !needSwitchPlayerId.includes(playerId)) ||
     (battlePhase === "selecting" && selectedCommand !== null);
 
   return (
@@ -542,7 +657,8 @@ export default function BattlePage({
               <Card className="p-8 h-full flex flex-col items-center justify-center">
                 <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-purple-600 mb-4"></div>
                 <p className="text-center">
-                  {needSwitchPlayerId && needSwitchPlayerId !== playerId
+                  {needSwitchPlayerId.length > 0 &&
+                  !needSwitchPlayerId.includes(playerId)
                     ? "相手がポケモンを交換しています..."
                     : "相手の行動を待っています..."}
                 </p>

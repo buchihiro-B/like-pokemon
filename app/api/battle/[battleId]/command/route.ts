@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { battleManager, PlayerBattleState } from "@/lib/battle-manager";
+import {
+  battleManager,
+  PlayerBattleState,
+  InternalBattleState,
+} from "@/lib/battle-manager";
 import { pusherServer } from "@/lib/pusher";
 import { calculateDamage, determineOrder } from "@/lib/battle-logic";
+import { applyMoveEffects } from "@/lib/move-effects";
 import {
   BattleCommand,
   TurnEvent,
   TurnResult,
   BattleState,
   PlayerState,
+  MoveEffectResult,
+  BattlePokemon,
+  BattlePhase,
 } from "@/lib/types/pokemon";
+import { getEffectiveStat } from "@/lib/move-effects";
 
 export async function POST(
   request: NextRequest,
@@ -57,19 +66,19 @@ export async function POST(
 function buildBattleState(battle: {
   player1: {
     id: string;
-    pokemon: import("@/lib/types/pokemon").BattlePokemon[];
+    pokemon: BattlePokemon[];
     activeIndex: number;
-    command: import("@/lib/types/pokemon").BattleCommand | null;
+    command: BattleCommand | null;
   };
   player2: {
     id: string;
-    pokemon: import("@/lib/types/pokemon").BattlePokemon[];
+    pokemon: BattlePokemon[];
     activeIndex: number;
-    command: import("@/lib/types/pokemon").BattleCommand | null;
+    command: BattleCommand | null;
   };
   turn: number;
-  phase: import("@/lib/types/pokemon").BattlePhase;
-  needSwitchPlayerId: string | null;
+  phase: BattlePhase;
+  needSwitchPlayerId: string[];
 }): BattleState {
   const player1: PlayerState = {
     id: battle.player1.id,
@@ -92,6 +101,256 @@ function buildBattleState(battle: {
   };
 }
 
+// 状態異常ダメージを適用するヘルパー関数
+function applyStatusDamage(
+  pokemon1: BattlePokemon,
+  playerId1: string,
+  pokemon2: BattlePokemon,
+  playerId2: string,
+  turnEvents: TurnEvent[],
+): void {
+  const pokemon1Speed = getEffectiveStat(pokemon1, "speed");
+  const pokemon2Speed = getEffectiveStat(pokemon2, "speed");
+
+  // ポケモン1の素早さが高い場合
+  if (pokemon1Speed > pokemon2Speed) {
+    // ポケモン1の状態異常ダメージ処理
+    const statusDamage1 = calcStatusDamage(pokemon1, playerId1);
+    if (statusDamage1) {
+      turnEvents.push(statusDamage1);
+    }
+
+    // ポケモン2の状態異常ダメージ処理
+    const statusDamage2 = calcStatusDamage(pokemon2, playerId2);
+    if (statusDamage2) {
+      turnEvents.push(statusDamage2);
+    }
+  }
+  // ポケモン2の素早さが高い場合
+  else {
+    // ポケモン2の状態異常ダメージ処理
+    const statusDamage2 = calcStatusDamage(pokemon2, playerId2);
+    if (statusDamage2) {
+      turnEvents.push(statusDamage2);
+    }
+
+    // ポケモン1の状態異常ダメージ処理
+    const statusDamage1 = calcStatusDamage(pokemon1, playerId1);
+    if (statusDamage1) {
+      turnEvents.push(statusDamage1);
+    }
+  }
+}
+
+function calcStatusDamage(
+  pokemon: BattlePokemon,
+  playerId: string,
+): TurnEvent | null {
+  const damageStatusType = ["やけど", "どく"];
+  // 状態異常がない、またはダメージを与えない状態異常の場合
+  if (!pokemon.status || !damageStatusType.includes(pokemon.status)) {
+    return null;
+  }
+
+  // やけどの場合
+  if (pokemon.status === "やけど") {
+    const damage = Math.floor(pokemon.maxHp);
+    // const damage = Math.floor(pokemon.maxHp / 16);
+    const newHp = Math.max(0, pokemon.currentHp - damage);
+    pokemon.currentHp = newHp;
+
+    return {
+      type: "statusDamage",
+      player: playerId,
+      pokemonName: pokemon.name,
+      status: "やけど",
+      damage,
+      newHp,
+      fainted: newHp === 0,
+    };
+  }
+  // どくの場合
+  else if (pokemon.status === "どく") {
+    const damage = Math.floor(pokemon.maxHp);
+    // const damage = Math.floor(pokemon.maxHp / 8);
+    const newHp = Math.max(0, pokemon.currentHp - damage);
+    pokemon.currentHp = newHp;
+
+    return {
+      type: "statusDamage",
+      player: playerId,
+      pokemonName: pokemon.name,
+      status: "どく",
+      damage,
+      newHp,
+      fainted: newHp === 0,
+    };
+  }
+
+  return null;
+}
+
+function vergeOfDeathJudge(
+  pokemon1: BattlePokemon,
+  pokemon2: BattlePokemon,
+  battle: InternalBattleState,
+  turnEvents: TurnEvent[],
+): TurnResult {
+  const pokemon1Fainted = pokemon1.currentHp === 0;
+  const pokemon2Fainted = pokemon2.currentHp === 0;
+
+  // ポケモン1が瀕死かつポケモン2が瀕死の場合
+  if (pokemon1Fainted && pokemon2Fainted) {
+    const allFaintedPokemon1 = battle.player1.pokemon.every(
+      (p) => p.currentHp === 0,
+    );
+    const allFaintedPokemon2 = battle.player2.pokemon.every(
+      (p) => p.currentHp === 0,
+    );
+
+    // 両者交代可能の場合
+    if (!allFaintedPokemon1 && !allFaintedPokemon2) {
+      battle.phase = "action";
+      battle.needSwitchPlayerId = [battle.player1.id, battle.player2.id];
+      battle.player1.command = null;
+      battle.player2.command = null;
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents
+      };
+      return turnResult;
+    }
+    // プレイヤー1のみ交代可能の場合
+    else if (!allFaintedPokemon1 && allFaintedPokemon2) {
+      battle.phase = "finished";
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents,
+        gameOver: {
+          winnerId: battle.player1.id,
+          reason: "all-fainted",
+        },
+      };
+      return turnResult;
+    }
+    // プレイヤー2のみ交代可能の場合
+    else if (allFaintedPokemon1 && !allFaintedPokemon2) {
+      battle.phase = "finished";
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents,
+        gameOver: {
+          winnerId: battle.player2.id,
+          reason: "all-fainted",
+        },
+      };
+      return turnResult;
+    }
+    // 両者全滅の場合
+    else {
+      battle.phase = "finished";
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents,
+        gameOver: {
+          winnerId: null,
+          reason: "draw",
+        },
+      };
+      return turnResult;
+    }
+  } 
+  // ポケモン1が瀕死かつポケモン2が瀕死ではない場合
+  else if (pokemon1Fainted && !pokemon2Fainted) {
+    const allFaintedPokemon1 = battle.player1.pokemon.every(
+      (p) => p.currentHp === 0,
+    );
+
+    // プレイヤー1のポケモンが全滅している場合
+    if (allFaintedPokemon1) {
+      battle.phase = "finished"
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents,
+        gameOver: {
+          winnerId: battle.player2.id,
+          reason: "all-fainted"
+        }
+      };
+      return turnResult;
+    } else {
+      battle.phase = "action";
+      battle.needSwitchPlayerId = [battle.player1.id];
+      battle.player1.command = null;
+      battle.player2.command = null;
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents
+      };
+      return turnResult;
+    } 
+  } 
+  // ポケモン1が瀕死ではないかつポケモン2が瀕死の場合
+  else if (!pokemon1Fainted && pokemon2Fainted) {
+    const allFaintedPokemon2 = battle.player2.pokemon.every(
+      (p) => p.currentHp === 0,
+    );
+
+    // プレイヤー2のポケモンが全滅している場合
+    if (allFaintedPokemon2) {
+      battle.phase = "finished"
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents,
+        gameOver: {
+          winnerId: battle.player1.id,
+          reason: "all-fainted"
+        },
+      };
+      return turnResult;
+    } else {
+      battle.phase = "action";
+      battle.needSwitchPlayerId = [battle.player2.id];
+      battle.player1.command = null;
+      battle.player2.command = null;
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents
+      };
+      return turnResult;
+    }
+  } 
+  // ポケモン1が瀕死ではないかつポケモン2が瀕死ではない場合
+  else {
+      battle.phase = "action";
+      battle.player1.command = null;
+      battle.player2.command = null;
+
+      const battleState = buildBattleState(battle);
+      const turnResult: TurnResult = {
+        battleState,
+        turnEvents
+      };
+      return turnResult;
+    }
+}
+
 // ターン処理の関数
 async function processTurn(battleId: string) {
   console.log("[Turn Processing] Starting turn for battle:", battleId);
@@ -109,7 +368,6 @@ async function processTurn(battleId: string) {
 
   // 降参処理（プレイヤー1）
   if (player1Command.type === "surrender") {
-    battle.winnerId = battle.player2.id;
     battle.phase = "finished";
 
     const battleState = buildBattleState(battle);
@@ -129,7 +387,6 @@ async function processTurn(battleId: string) {
 
   // 降参処理（プレイヤー2）
   if (player2Command.type === "surrender") {
-    battle.winnerId = battle.player1.id;
     battle.phase = "finished";
 
     const battleState = buildBattleState(battle);
@@ -190,23 +447,49 @@ async function processTurn(battleId: string) {
     const move = attacker.moves[moveCommand.moveIndex];
     console.log("[Turn Processing] Move after switch:", move.name);
 
-    const result = calculateDamage(attacker, defender, move);
-    const newHp = Math.max(0, defender.currentHp - result.damage);
-    defender.currentHp = newHp;
+    // リチャージ中の場合はスキップ
+    if (attacker.mustRecharge) {
+      attacker.mustRecharge = false;
+      turnEvents.push({
+        type: "move",
+        attacker: movePlayer.id,
+        attackerName: attacker.name,
+        defender: switchPlayer.id,
+        defenderName: defender.name,
+        moveName: "行動不能",
+        damage: 0,
+        newHp: defender.currentHp,
+        effectiveness: 0,
+        isCritical: false,
+        fainted: false,
+      });
+    } else {
+      const result = calculateDamage(attacker, defender, move, true);
+      const newHp = Math.max(0, defender.currentHp - result.damage);
+      defender.currentHp = newHp;
 
-    turnEvents.push({
-      type: "move",
-      attacker: movePlayer.id,
-      attackerName: attacker.name,
-      defender: switchPlayer.id,
-      defenderName: defender.name,
-      moveName: move.name,
-      damage: result.damage,
-      newHp: newHp,
-      effectiveness: result.effectiveness,
-      isCritical: result.isCritical,
-      fainted: newHp === 0,
-    });
+      // 技の追加効果を適用
+      let effectResults: MoveEffectResult[] = [];
+      // 変化技は常に効果発動、攻撃技はダメージを与えた場合のみ
+      if (move.effects && (move.category === "変化" || result.damage > 0)) {
+        effectResults = applyMoveEffects(move.effects, attacker, defender);
+      }
+
+      turnEvents.push({
+        type: "move",
+        attacker: movePlayer.id,
+        attackerName: attacker.name,
+        defender: switchPlayer.id,
+        defenderName: defender.name,
+        moveName: move.name,
+        damage: result.damage,
+        newHp: newHp,
+        effectiveness: result.effectiveness,
+        isCritical: result.isCritical,
+        fainted: newHp === 0,
+        effects: effectResults.length > 0 ? effectResults : undefined,
+      });
+    }
 
     // 瀕死判定
     if (defender.currentHp === 0) {
@@ -214,7 +497,6 @@ async function processTurn(battleId: string) {
 
       // すべてのポケモンが瀕死の場合
       if (allFainted) {
-        battle.winnerId = movePlayer.id;
         battle.phase = "finished";
 
         const battleState = buildBattleState(battle);
@@ -222,7 +504,7 @@ async function processTurn(battleId: string) {
           battleState,
           turnEvents,
           gameOver: {
-            winnerId: battle.winnerId,
+            winnerId: switchPlayer.id,
             reason: "all-fainted",
           },
         };
@@ -238,7 +520,7 @@ async function processTurn(battleId: string) {
       // 交代可能な場合
       else {
         battle.phase = "action";
-        battle.needSwitchPlayerId = switchPlayer.id;
+        battle.needSwitchPlayerId = [switchPlayer.id];
         battle.player1.command = null;
         battle.player2.command = null;
 
@@ -256,6 +538,38 @@ async function processTurn(battleId: string) {
         battleManager.updateBattle(battleId, battle);
         return;
       }
+    }
+
+    // ターン終了時の状態異常ダメージ
+    applyStatusDamage(
+      attacker,
+      movePlayer.id,
+      defender,
+      switchPlayer.id,
+      turnEvents,
+    );
+
+    // 状態異常ダメージによる瀕死判定
+    const turnStatusDamageResult = vergeOfDeathJudge(defender, attacker, battle, turnEvents);
+    if (turnStatusDamageResult.gameOver) {
+      await pusherServer.trigger(
+        `battle-${battleId}`,
+        "turn-result",
+        turnStatusDamageResult,
+      );
+      battleManager.endBattle(battleId);
+      return;
+    } 
+    // 状態異常ダメージによる交代判定
+    else if (turnStatusDamageResult.battleState.needSwitchPlayerId.length > 0) {
+      await pusherServer.trigger(
+        `battle-${battleId}`,
+        "turn-result",
+        turnStatusDamageResult,
+      );
+
+      battleManager.updateBattle(battleId, battle);
+      return;
     }
 
     // 次のターンへ
@@ -295,6 +609,44 @@ async function processTurn(battleId: string) {
       pokemonIndex: player2Command.pokemonIndex,
     });
 
+    // ターン終了時の状態異常ダメージ
+    applyStatusDamage(
+      battle.player1.pokemon[player1Command.pokemonIndex],
+      battle.player1.id,
+      battle.player2.pokemon[player2Command.pokemonIndex],
+      battle.player2.id,
+      turnEvents,
+    );
+
+    // 状態異常ダメージによる瀕死判定
+    const turnStatusDamageResult = vergeOfDeathJudge(
+      battle.player1.pokemon[player1Command.pokemonIndex],
+      battle.player2.pokemon[player2Command.pokemonIndex],
+      battle,
+      turnEvents
+    );
+
+    // 状態異常ダメージによるゲーム終了判定
+    if (turnStatusDamageResult.gameOver) {
+      await pusherServer.trigger(
+        `battle-${battleId}`,
+        "turn-result",
+        turnStatusDamageResult,
+      );
+      battleManager.endBattle(battleId);
+      return;
+    }
+    // 状態異常ダメージによる交代判定
+    else if (turnStatusDamageResult.battleState.needSwitchPlayerId.length > 0) {
+      await pusherServer.trigger(
+        `battle-${battleId}`,
+        "turn-result",
+        turnStatusDamageResult,
+      );
+      battleManager.updateBattle(battleId, battle);
+      return;
+    }
+
     battle.phase = "selecting";
     battle.turn += 1;
     battle.player1.command = null;
@@ -314,49 +666,97 @@ async function processTurn(battleId: string) {
 
   // 両者技を選択した場合
   if (player1Command.type === "move" && player2Command.type === "move") {
-    const [firstPokemon, secondPokemon] = determineOrder(
-      battle.player1.pokemon[battle.player1.activeIndex],
-      battle.player2.pokemon[battle.player2.activeIndex],
+    const attacker1 = battle.player1.pokemon[battle.player1.activeIndex];
+    const attacker2 = battle.player2.pokemon[battle.player2.activeIndex];
+    const move1 = attacker1.moves[player1Command.moveIndex];
+    const move2 = attacker2.moves[player2Command.moveIndex];
+
+    const [firstPokemon, secondPokemon, isPlayer1First] = determineOrder(
+      attacker1,
+      attacker2,
+      move1,
+      move2,
     );
 
     let firstPlayer: PlayerBattleState;
     let secondPlayer: PlayerBattleState;
+    let firstMove;
+    let secondMove;
 
     // プレイヤー1のポケモンが先行の場合
-    if (battle.player1.pokemon.includes(firstPokemon)) {
+    if (isPlayer1First) {
       firstPlayer = battle.player1;
       secondPlayer = battle.player2;
+      firstMove = move1;
+      secondMove = move2;
     } else {
       firstPlayer = battle.player2;
       secondPlayer = battle.player1;
+      firstMove = move2;
+      secondMove = move1;
     }
 
     // 型ガードで安全性を確保
     if (firstPlayer.command!.type !== "move") return;
     if (secondPlayer.command!.type !== "move") return;
 
-    // 先攻の攻撃
-    const move = firstPokemon.moves[firstPlayer.command!.moveIndex];
+    // 先攻がリチャージ中の場合はスキップ
+    if (firstPokemon.mustRecharge) {
+      firstPokemon.mustRecharge = false;
+      turnEvents.push({
+        type: "move",
+        attacker: firstPlayer.id,
+        attackerName: firstPokemon.name,
+        defender: secondPlayer.id,
+        defenderName: secondPokemon.name,
+        moveName: "行動不能",
+        damage: 0,
+        newHp: secondPokemon.currentHp,
+        effectiveness: 0,
+        isCritical: false,
+        fainted: false,
+      });
+    } else {
+      console.log("[Turn Processing] First attack:", firstMove.name);
 
-    console.log("[Turn Processing] First attack:", move.name);
+      const result = calculateDamage(
+        firstPokemon,
+        secondPokemon,
+        firstMove,
+        true,
+      );
+      const newHp = Math.max(0, secondPokemon.currentHp - result.damage);
+      secondPokemon.currentHp = newHp;
 
-    const result = calculateDamage(firstPokemon, secondPokemon, move);
-    const newHp = Math.max(0, secondPokemon.currentHp - result.damage);
-    secondPokemon.currentHp = newHp;
+      // 技の追加効果を適用
+      let effectResults: MoveEffectResult[] = [];
+      // 変化技は常に効果発動、攻撃技はダメージを与えた場合のみ
+      if (
+        firstMove.effects &&
+        (firstMove.category === "変化" || result.damage > 0)
+      ) {
+        effectResults = applyMoveEffects(
+          firstMove.effects,
+          firstPokemon,
+          secondPokemon,
+        );
+      }
 
-    turnEvents.push({
-      type: "move",
-      attacker: firstPlayer.id,
-      attackerName: firstPokemon.name,
-      defender: secondPlayer.id,
-      defenderName: secondPokemon.name,
-      moveName: move.name,
-      damage: result.damage,
-      newHp: newHp,
-      effectiveness: result.effectiveness,
-      isCritical: result.isCritical,
-      fainted: newHp === 0,
-    });
+      turnEvents.push({
+        type: "move",
+        attacker: firstPlayer.id,
+        attackerName: firstPokemon.name,
+        defender: secondPlayer.id,
+        defenderName: secondPokemon.name,
+        moveName: firstMove.name,
+        damage: result.damage,
+        newHp: newHp,
+        effectiveness: result.effectiveness,
+        isCritical: result.isCritical,
+        fainted: newHp === 0,
+        effects: effectResults.length > 0 ? effectResults : undefined,
+      });
+    }
 
     // 後攻が瀕死になった場合
     if (secondPokemon.currentHp === 0) {
@@ -365,7 +765,6 @@ async function processTurn(battleId: string) {
       // すべてのポケモンが瀕死の場合
       if (allFainted) {
         // 全滅→ゲーム終了
-        battle.winnerId = firstPlayer.id;
         battle.phase = "finished";
 
         const battleState = buildBattleState(battle);
@@ -373,7 +772,7 @@ async function processTurn(battleId: string) {
           battleState,
           turnEvents,
           gameOver: {
-            winnerId: battle.winnerId,
+            winnerId: firstPlayer.id,
             reason: "all-fainted",
           },
         };
@@ -385,11 +784,11 @@ async function processTurn(battleId: string) {
         );
         battleManager.endBattle(battleId);
         return;
-      } 
+      }
       // 交代可能な場合
       else {
         battle.phase = "action";
-        battle.needSwitchPlayerId = secondPlayer.id;
+        battle.needSwitchPlayerId = [secondPlayer.id];
         battle.player1.command = null;
         battle.player2.command = null;
 
@@ -411,34 +810,87 @@ async function processTurn(battleId: string) {
 
     // 後攻の攻撃
     if (firstPokemon.currentHp > 0) {
-      const secondMove = secondPokemon.moves[secondPlayer.command!.moveIndex];
+      // 後攻がリチャージ中の場合はスキップ
+      if (secondPokemon.mustRecharge) {
+        secondPokemon.mustRecharge = false;
+        turnEvents.push({
+          type: "move",
+          attacker: secondPlayer.id,
+          attackerName: secondPokemon.name,
+          defender: firstPlayer.id,
+          defenderName: firstPokemon.name,
+          moveName: "行動不能",
+          damage: 0,
+          newHp: firstPokemon.currentHp,
+          effectiveness: 0,
+          isCritical: false,
+          fainted: false,
+        });
+      } else {
+        console.log("[Turn Processing] Second attack:", secondMove.name);
 
-      console.log("[Turn Processing] Second attack:", secondMove.name);
+        // プロテクト状態の確認
+        if (firstPokemon.isProtected && secondMove.category !== "変化") {
+          firstPokemon.isProtected = false;
+          turnEvents.push({
+            type: "move",
+            attacker: secondPlayer.id,
+            attackerName: secondPokemon.name,
+            defender: firstPlayer.id,
+            defenderName: firstPokemon.name,
+            moveName: secondMove.name,
+            damage: 0,
+            newHp: firstPokemon.currentHp,
+            effectiveness: 0,
+            isCritical: false,
+            fainted: false,
+          });
+        } else {
+          const secondResult = calculateDamage(
+            secondPokemon,
+            firstPokemon,
+            secondMove,
+            false,
+          );
+          const secondNewHp = Math.max(
+            0,
+            firstPokemon.currentHp - secondResult.damage,
+          );
+          firstPokemon.currentHp = secondNewHp;
 
-      const secondResult = calculateDamage(
-        secondPokemon,
-        firstPokemon,
-        secondMove,
-      );
-      const secondNewHp = Math.max(
-        0,
-        firstPokemon.currentHp - secondResult.damage,
-      );
-      firstPokemon.currentHp = secondNewHp;
+          // 技の追加効果を適用
+          let effectResults: MoveEffectResult[] = [];
+          // 変化技は常に効果発動、攻撃技はダメージを与えた場合のみ
+          if (
+            secondMove.effects &&
+            (secondMove.category === "変化" || secondResult.damage > 0)
+          ) {
+            effectResults = applyMoveEffects(
+              secondMove.effects,
+              secondPokemon,
+              firstPokemon,
+            );
+          }
 
-      turnEvents.push({
-        type: "move",
-        attacker: secondPlayer.id,
-        attackerName: secondPokemon.name,
-        defender: firstPlayer.id,
-        defenderName: firstPokemon.name,
-        moveName: secondMove.name,
-        damage: secondResult.damage,
-        newHp: secondNewHp,
-        effectiveness: secondResult.effectiveness,
-        isCritical: secondResult.isCritical,
-        fainted: secondNewHp === 0,
-      });
+          turnEvents.push({
+            type: "move",
+            attacker: secondPlayer.id,
+            attackerName: secondPokemon.name,
+            defender: firstPlayer.id,
+            defenderName: firstPokemon.name,
+            moveName: secondMove.name,
+            damage: secondResult.damage,
+            newHp: secondNewHp,
+            effectiveness: secondResult.effectiveness,
+            isCritical: secondResult.isCritical,
+            fainted: secondNewHp === 0,
+            effects: effectResults.length > 0 ? effectResults : undefined,
+          });
+        }
+
+        // プロテクト状態をリセット
+        firstPokemon.isProtected = false;
+      }
 
       // 先攻が瀕死になった場合
       if (firstPokemon.currentHp === 0) {
@@ -446,7 +898,6 @@ async function processTurn(battleId: string) {
 
         // すべてのポケモンが瀕死の場合
         if (allFainted) {
-          battle.winnerId = secondPlayer.id;
           battle.phase = "finished";
 
           const battleState = buildBattleState(battle);
@@ -454,7 +905,7 @@ async function processTurn(battleId: string) {
             battleState,
             turnEvents,
             gameOver: {
-              winnerId: battle.winnerId,
+              winnerId: secondPlayer.id,
               reason: "all-fainted",
             },
           };
@@ -466,11 +917,11 @@ async function processTurn(battleId: string) {
           );
           battleManager.endBattle(battleId);
           return;
-        } 
+        }
         // 交代可能な場合
         else {
           battle.phase = "action";
-          battle.needSwitchPlayerId = firstPlayer.id;
+          battle.needSwitchPlayerId = [firstPlayer.id];
           battle.player1.command = null;
           battle.player2.command = null;
 
@@ -488,6 +939,211 @@ async function processTurn(battleId: string) {
           battleManager.updateBattle(battleId, battle);
           return;
         }
+      }
+    }
+
+    // プロテクト状態をリセット（ターン終了時）
+    attacker1.isProtected = false;
+    attacker2.isProtected = false;
+
+    // ターン終了時の状態異常ダメージ
+    applyStatusDamage(
+      attacker1,
+      battle.player1.id,
+      attacker2,
+      battle.player2.id,
+      turnEvents,
+    );
+
+    // 状態異常ダメージによる瀕死判定
+    const player1Fainted = attacker1.currentHp === 0;
+    const player2Fainted = attacker2.currentHp === 0;
+
+    // 両者瀕死の場合
+    if (player1Fainted && player2Fainted) {
+      const player1AllFainted = battle.player1.pokemon.every(
+        (p) => p.currentHp === 0,
+      );
+      const player2AllFainted = battle.player2.pokemon.every(
+        (p) => p.currentHp === 0,
+      );
+
+      // 両者全滅の場合は引き分け（先に全滅したほうの負け、ここでは引き分けとする）
+      if (player1AllFainted && player2AllFainted) {
+        battle.phase = "finished";
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+          gameOver: {
+            winnerId: battle.player1.id, // 仮に player1 を勝者とする
+            reason: "all-fainted",
+          },
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.endBattle(battleId);
+        return;
+      }
+      // プレイヤー1のみ全滅
+      else if (player1AllFainted) {
+        battle.phase = "finished";
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+          gameOver: {
+            winnerId: battle.player2.id,
+            reason: "all-fainted",
+          },
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.endBattle(battleId);
+        return;
+      }
+      // プレイヤー2のみ全滅
+      else if (player2AllFainted) {
+        battle.phase = "finished";
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+          gameOver: {
+            winnerId: battle.player1.id,
+            reason: "all-fainted",
+          },
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.endBattle(battleId);
+        return;
+      }
+      // 両者とも交代可能
+      else {
+        battle.phase = "action";
+        battle.needSwitchPlayerId = [battle.player1.id, battle.player2.id];
+        battle.player1.command = null;
+        battle.player2.command = null;
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.updateBattle(battleId, battle);
+        return;
+      }
+    }
+    // プレイヤー1のみ瀕死
+    else if (player1Fainted) {
+      const allFainted = battle.player1.pokemon.every((p) => p.currentHp === 0);
+
+      if (allFainted) {
+        battle.phase = "finished";
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+          gameOver: {
+            winnerId: battle.player2.id,
+            reason: "all-fainted",
+          },
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.endBattle(battleId);
+        return;
+      } else {
+        battle.phase = "action";
+        battle.needSwitchPlayerId = [battle.player1.id];
+        battle.player1.command = null;
+        battle.player2.command = null;
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.updateBattle(battleId, battle);
+        return;
+      }
+    }
+    // プレイヤー2のみ瀕死
+    else if (player2Fainted) {
+      const allFainted = battle.player2.pokemon.every((p) => p.currentHp === 0);
+
+      if (allFainted) {
+        battle.phase = "finished";
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+          gameOver: {
+            winnerId: battle.player1.id,
+            reason: "all-fainted",
+          },
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.endBattle(battleId);
+        return;
+      } else {
+        battle.phase = "action";
+        battle.needSwitchPlayerId = [battle.player2.id];
+        battle.player1.command = null;
+        battle.player2.command = null;
+
+        const battleState = buildBattleState(battle);
+        const turnResult: TurnResult = {
+          battleState,
+          turnEvents,
+        };
+
+        await pusherServer.trigger(
+          `battle-${battleId}`,
+          "turn-result",
+          turnResult,
+        );
+        battleManager.updateBattle(battleId, battle);
+        return;
       }
     }
   }
