@@ -14,23 +14,24 @@ export const MESSAGES = {
   SELECT_NEXT_POKEMON: "次のポケモンを選択してください",
   
   // 技使用
-  MOVE_USE: "{attackerName}の{moveName}！",
-  MOVE_MISS: "しかし攻撃は外れた！",
-  CRITICAL_HIT: "急所に当たった！",
-  SUPER_EFFECTIVE: "効果は抜群だ！",
-  NOT_VERY_EFFECTIVE: "効果はいまひとつのようだ...",
-  DAMAGE: "{damage}のダメージ！",
+  MOVE_USE: "{attackerName}は {moveName}を つかった！",
+  MOVE_MISS: "しかし こうげきは はずれた！",
+  CRITICAL_HIT: "きゅうしょに あたった！",
+  SUPER_EFFECTIVE: "こうかは ばつぐんだ！",
+  NOT_VERY_EFFECTIVE: "こうかは いまひとつの ようだ...",
+  DAMAGE: "{damage}の ダメージ！",
+  PROTECT: "{target}は みを まもっている！",
   
   // 状態異常
   STATUS_INFLICTED: "{target}は{status}になった！",
   STATUS_DAMAGE: "{pokemonName}は{status}のダメージをうけている！",
   
   // ステータス変化
-  STAT_NO_CHANGE: "{target}の{stat}はこれ以上変わらない！",
-  STAT_UP_2: "{target}の{stat}がぐーんと上がった！",
-  STAT_UP_1: "{target}の{stat}が上がった！",
-  STAT_DOWN_1: "{target}の{stat}が下がった！",
-  STAT_DOWN_2: "{target}の{stat}ががくっと下がった！",
+  STAT_NO_CHANGE: "{target}の {stat}は これいじょう かわらない！",
+  STAT_UP_2: "{target}の {stat}が ぐーんと あがった！",
+  STAT_UP_1: "{target}の {stat}が あがった！",
+  STAT_DOWN_1: "{target}の {stat}が さがった！",
+  STAT_DOWN_2: "{target}の {stat}が がくっと さがった！",
   EFFECT_FAILED: "しかし うまく きまらなかった…",
   OTHER_EFFECT: "{target}は{effectType}の効果を受けた！",
   
@@ -39,7 +40,7 @@ export const MESSAGES = {
   SWITCH_OPPONENT: "相手は{pokemonName}に交換した！",
   
   // 瀕死
-  FAINTED: "{pokemonName}は倒れた！",
+  FAINTED: "{pokemonName}は たおれた！",
 } as const;
 
 // 読み替え定義

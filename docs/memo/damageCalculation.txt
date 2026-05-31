@@ -1,0 +1,22 @@
+■ダメージ計算処理フロー
+1．命中判定
+  ・あたり：処理継続
+  ・はずれ：レスポンス
+    ・return { damage: 0, effectiveness, isCritical: false, hit: false };
+2．タイプ相性判定
+3．技種別判定
+  ・変化技の場合：レスポンス
+    ・{ damage: 0, effectiveness, isCritical: false, hit: true };
+  ・威力技の場合：処理継続
+4．特殊効果技判定
+  ・特殊効果を持たない場合：処理継続
+  ・特殊効果を持つ場合：
+    ・威力技の場合：処理継続
+    ・固定ダメージ技の場合：レスポンス
+      ・{ damage: customLogic.fixedDamage ?? 0, effectiveness: effectiveness, isCritical: false, hit: true };
+5．能力ランク判定
+6．急所判定
+7．タイプ一致判定
+8．乱数判定
+9．ダメージ計算
+  ・{ damage, effectiveness, isCritical, hit: true };

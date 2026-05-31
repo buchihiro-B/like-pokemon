@@ -1,5 +1,6 @@
 import { BattlePokemon, Move, Pokemon, PokemonType } from "./types/pokemon";
 import { getEffectiveStat, getCustomMoveLogic } from "./move-effects";
+import { CUSTOM_MOVE_LOGIC_TYPES } from "./constants";
 
 // タイプ相性表（簡易版）
 const typeEffectiveness: Record<
@@ -99,20 +100,48 @@ export function calculateDamage(
   defender: BattlePokemon,
   move: Move,
   isFirst: boolean = false,
-): { damage: number; effectiveness: number; isCritical: boolean } {
-  if (move.category === "変化") {
-    return { damage: 0, effectiveness: 1, isCritical: false };
-  }
-
-  // 命中判定
+): {
+  damage: number;
+  effectiveness: number;
+  isCritical: boolean;
+  hit: boolean;
+} {
+  // 命中判定（最初に実施）
   const hitRoll = Math.random() * 100;
+  // ハズレた場合
   if (hitRoll > move.accuracy) {
-    return { damage: 0, effectiveness: 0, isCritical: false };
+    return { damage: 0, effectiveness: 1, isCritical: false, hit: false };
   }
 
-  // 特殊な技のロジックを適用
+  // タイプ相性判定
+  const effectiveness = getTypeEffectiveness(move.type, defender.types);
+
+  // 変化技の場合はダメージ計算をスキップ
+  if (move.category === "変化") {
+    return { damage: 0, effectiveness, isCritical: false, hit: true };
+  }
+
+  let movePower = move.power;
+
+  // 特殊効果技判定
   const customLogic = getCustomMoveLogic(move, attacker, isFirst);
-  const movePower = customLogic?.power ?? move.power;
+  // 特殊効果技の場合
+  if (customLogic != null) {
+    // 威力変更技の場合
+    if (customLogic.customLogicType === CUSTOM_MOVE_LOGIC_TYPES.POWER) {
+      movePower = customLogic.power ?? movePower;
+    }
+    // 固定ダメージ技の場合
+    if (customLogic?.customLogicType === CUSTOM_MOVE_LOGIC_TYPES.FIXED_DAMAGE) {
+      // タイプ無効の場合
+      if (effectiveness === 0) {
+        return { damage: 0, effectiveness: 0, isCritical: false, hit: true };
+      } else {
+        // タイプ相性を1として返却する
+        return { damage: customLogic.fixedDamage ?? 0, effectiveness: 1, isCritical: false, hit: true };
+      }
+    }
+  }
 
   const level = 50;
 
@@ -120,6 +149,7 @@ export function calculateDamage(
   let attackStat: number;
   let defenseStat: number;
 
+  // 能力ランク判定
   if (move.category === "物理") {
     attackStat = getEffectiveStat(attacker, "attack");
     defenseStat = getEffectiveStat(defender, "defense");
@@ -139,25 +169,17 @@ export function calculateDamage(
   // タイプ一致ボーナス
   const stab = attacker.types.includes(move.type) ? 1.5 : 1;
 
-  // タイプ相性
-  const effectiveness = getTypeEffectiveness(move.type, defender.types);
-
   // 乱数（0.85～1.0）
   const random = 0.85 + Math.random() * 0.15;
 
   // ダメージ計算式
   const baseDamage =
     (((2 * level) / 5 + 2) * movePower * (attackStat / defenseStat)) / 50 + 2;
-  let damage = Math.floor(
+  const damage = Math.floor(
     baseDamage * stab * effectiveness * criticalMultiplier * random,
   );
 
-  // カスタムロジックでダメージを直接変更
-  if (customLogic?.modifyDamage) {
-    damage = customLogic.modifyDamage(damage);
-  }
-
-  return { damage, effectiveness, isCritical };
+  return { damage, effectiveness, isCritical, hit: true };
 }
 
 // バトルポケモンを初期化

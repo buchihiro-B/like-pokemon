@@ -16,6 +16,7 @@ import {
   MoveEffectResult,
   BattlePokemon,
   BattlePhase,
+  Move,
 } from "@/lib/types/pokemon";
 import { getEffectiveStat } from "@/lib/move-effects";
 
@@ -99,6 +100,19 @@ function buildBattleState(battle: {
     phase: battle.phase,
     needSwitchPlayerId: battle.needSwitchPlayerId,
   };
+}
+
+// 相手を対象とする技かどうかを判定するヘルパー関数
+function isTargetingOpponent(move: Move): boolean {
+  // 攻撃技（power > 0）は相手を対象
+  if (move.power > 0) return true;
+
+  // 変化技の場合、effectsのtargetがopponentかチェック
+  if (move.effects) {
+    return move.effects.some((effect) => effect.target === "opponent");
+  }
+
+  return false;
 }
 
 // 状態異常ダメージを適用するヘルパー関数
@@ -218,7 +232,7 @@ function vergeOfDeathJudge(
       const battleState = buildBattleState(battle);
       const turnResult: TurnResult = {
         battleState,
-        turnEvents
+        turnEvents,
       };
       return turnResult;
     }
@@ -267,7 +281,7 @@ function vergeOfDeathJudge(
       };
       return turnResult;
     }
-  } 
+  }
   // ポケモン1が瀕死かつポケモン2が瀕死ではない場合
   else if (pokemon1Fainted && !pokemon2Fainted) {
     const allFaintedPokemon1 = battle.player1.pokemon.every(
@@ -276,7 +290,7 @@ function vergeOfDeathJudge(
 
     // プレイヤー1のポケモンが全滅している場合
     if (allFaintedPokemon1) {
-      battle.phase = "finished"
+      battle.phase = "finished";
 
       const battleState = buildBattleState(battle);
       const turnResult: TurnResult = {
@@ -284,8 +298,8 @@ function vergeOfDeathJudge(
         turnEvents,
         gameOver: {
           winnerId: battle.player2.id,
-          reason: "all-fainted"
-        }
+          reason: "all-fainted",
+        },
       };
       return turnResult;
     } else {
@@ -297,11 +311,11 @@ function vergeOfDeathJudge(
       const battleState = buildBattleState(battle);
       const turnResult: TurnResult = {
         battleState,
-        turnEvents
+        turnEvents,
       };
       return turnResult;
-    } 
-  } 
+    }
+  }
   // ポケモン1が瀕死ではないかつポケモン2が瀕死の場合
   else if (!pokemon1Fainted && pokemon2Fainted) {
     const allFaintedPokemon2 = battle.player2.pokemon.every(
@@ -310,7 +324,7 @@ function vergeOfDeathJudge(
 
     // プレイヤー2のポケモンが全滅している場合
     if (allFaintedPokemon2) {
-      battle.phase = "finished"
+      battle.phase = "finished";
 
       const battleState = buildBattleState(battle);
       const turnResult: TurnResult = {
@@ -318,7 +332,7 @@ function vergeOfDeathJudge(
         turnEvents,
         gameOver: {
           winnerId: battle.player1.id,
-          reason: "all-fainted"
+          reason: "all-fainted",
         },
       };
       return turnResult;
@@ -331,24 +345,24 @@ function vergeOfDeathJudge(
       const battleState = buildBattleState(battle);
       const turnResult: TurnResult = {
         battleState,
-        turnEvents
+        turnEvents,
       };
       return turnResult;
     }
-  } 
+  }
   // ポケモン1が瀕死ではないかつポケモン2が瀕死ではない場合
   else {
-      battle.phase = "action";
-      battle.player1.command = null;
-      battle.player2.command = null;
+    battle.phase = "action";
+    battle.player1.command = null;
+    battle.player2.command = null;
 
-      const battleState = buildBattleState(battle);
-      const turnResult: TurnResult = {
-        battleState,
-        turnEvents
-      };
-      return turnResult;
-    }
+    const battleState = buildBattleState(battle);
+    const turnResult: TurnResult = {
+      battleState,
+      turnEvents,
+    };
+    return turnResult;
+  }
 }
 
 // ターン処理の関数
@@ -459,9 +473,28 @@ async function processTurn(battleId: string) {
         moveName: "行動不能",
         damage: 0,
         newHp: defender.currentHp,
-        effectiveness: 0,
+        effectiveness: 1,
         isCritical: false,
         fainted: false,
+        hit: false,
+      });
+    } else if (defender.isProtected && isTargetingOpponent(move)) {
+      // プロテクト状態で相手を対象とする技を受けた場合
+      defender.isProtected = false;
+      turnEvents.push({
+        type: "move",
+        attacker: movePlayer.id,
+        attackerName: attacker.name,
+        defender: switchPlayer.id,
+        defenderName: defender.name,
+        moveName: move.name,
+        damage: 0,
+        newHp: defender.currentHp,
+        effectiveness: 1,
+        isCritical: false,
+        fainted: false,
+        hit: true,
+        protected: true,
       });
     } else {
       const result = calculateDamage(attacker, defender, move, true);
@@ -487,6 +520,7 @@ async function processTurn(battleId: string) {
         effectiveness: result.effectiveness,
         isCritical: result.isCritical,
         fainted: newHp === 0,
+        hit: result.hit,
         effects: effectResults.length > 0 ? effectResults : undefined,
       });
     }
@@ -550,7 +584,12 @@ async function processTurn(battleId: string) {
     );
 
     // 状態異常ダメージによる瀕死判定
-    const turnStatusDamageResult = vergeOfDeathJudge(defender, attacker, battle, turnEvents);
+    const turnStatusDamageResult = vergeOfDeathJudge(
+      defender,
+      attacker,
+      battle,
+      turnEvents,
+    );
     if (turnStatusDamageResult.gameOver) {
       await pusherServer.trigger(
         `battle-${battleId}`,
@@ -559,7 +598,7 @@ async function processTurn(battleId: string) {
       );
       battleManager.endBattle(battleId);
       return;
-    } 
+    }
     // 状態異常ダメージによる交代判定
     else if (turnStatusDamageResult.battleState.needSwitchPlayerId.length > 0) {
       await pusherServer.trigger(
@@ -623,7 +662,7 @@ async function processTurn(battleId: string) {
       battle.player1.pokemon[player1Command.pokemonIndex],
       battle.player2.pokemon[player2Command.pokemonIndex],
       battle,
-      turnEvents
+      turnEvents,
     );
 
     // 状態異常ダメージによるゲーム終了判定
@@ -712,50 +751,72 @@ async function processTurn(battleId: string) {
         moveName: "行動不能",
         damage: 0,
         newHp: secondPokemon.currentHp,
-        effectiveness: 0,
+        effectiveness: 1,
         isCritical: false,
         fainted: false,
+        hit: false,
       });
     } else {
       console.log("[Turn Processing] First attack:", firstMove.name);
 
-      const result = calculateDamage(
-        firstPokemon,
-        secondPokemon,
-        firstMove,
-        true,
-      );
-      const newHp = Math.max(0, secondPokemon.currentHp - result.damage);
-      secondPokemon.currentHp = newHp;
-
-      // 技の追加効果を適用
-      let effectResults: MoveEffectResult[] = [];
-      // 変化技は常に効果発動、攻撃技はダメージを与えた場合のみ
-      if (
-        firstMove.effects &&
-        (firstMove.category === "変化" || result.damage > 0)
-      ) {
-        effectResults = applyMoveEffects(
-          firstMove.effects,
+      // プロテクト状態の確認
+      if (secondPokemon.isProtected && isTargetingOpponent(firstMove)) {
+        secondPokemon.isProtected = false;
+        turnEvents.push({
+          type: "move",
+          attacker: firstPlayer.id,
+          attackerName: firstPokemon.name,
+          defender: secondPlayer.id,
+          defenderName: secondPokemon.name,
+          moveName: firstMove.name,
+          damage: 0,
+          newHp: secondPokemon.currentHp,
+          effectiveness: 1,
+          isCritical: false,
+          fainted: false,
+          hit: true,
+          protected: true,
+        });
+      } else {
+        const result = calculateDamage(
           firstPokemon,
           secondPokemon,
+          firstMove,
+          true,
         );
-      }
+        const newHp = Math.max(0, secondPokemon.currentHp - result.damage);
+        secondPokemon.currentHp = newHp;
 
-      turnEvents.push({
-        type: "move",
-        attacker: firstPlayer.id,
-        attackerName: firstPokemon.name,
-        defender: secondPlayer.id,
-        defenderName: secondPokemon.name,
-        moveName: firstMove.name,
-        damage: result.damage,
-        newHp: newHp,
-        effectiveness: result.effectiveness,
-        isCritical: result.isCritical,
-        fainted: newHp === 0,
-        effects: effectResults.length > 0 ? effectResults : undefined,
-      });
+        // 技の追加効果を適用
+        let effectResults: MoveEffectResult[] = [];
+        // 変化技は常に効果発動、攻撃技はダメージを与えた場合のみ
+        if (
+          firstMove.effects &&
+          (firstMove.category === "変化" || result.damage > 0)
+        ) {
+          effectResults = applyMoveEffects(
+            firstMove.effects,
+            firstPokemon,
+            secondPokemon,
+          );
+        }
+
+        turnEvents.push({
+          type: "move",
+          attacker: firstPlayer.id,
+          attackerName: firstPokemon.name,
+          defender: secondPlayer.id,
+          defenderName: secondPokemon.name,
+          moveName: firstMove.name,
+          damage: result.damage,
+          newHp: newHp,
+          effectiveness: result.effectiveness,
+          isCritical: result.isCritical,
+          fainted: newHp === 0,
+          hit: result.hit,
+          effects: effectResults.length > 0 ? effectResults : undefined,
+        });
+      }
     }
 
     // 後攻が瀕死になった場合
@@ -822,15 +883,16 @@ async function processTurn(battleId: string) {
           moveName: "行動不能",
           damage: 0,
           newHp: firstPokemon.currentHp,
-          effectiveness: 0,
+          effectiveness: 1,
           isCritical: false,
           fainted: false,
+          hit: false,
         });
       } else {
         console.log("[Turn Processing] Second attack:", secondMove.name);
 
         // プロテクト状態の確認
-        if (firstPokemon.isProtected && secondMove.category !== "変化") {
+        if (firstPokemon.isProtected && isTargetingOpponent(secondMove)) {
           firstPokemon.isProtected = false;
           turnEvents.push({
             type: "move",
@@ -841,9 +903,11 @@ async function processTurn(battleId: string) {
             moveName: secondMove.name,
             damage: 0,
             newHp: firstPokemon.currentHp,
-            effectiveness: 0,
+            effectiveness: 1,
             isCritical: false,
             fainted: false,
+            hit: true,
+            protected: true,
           });
         } else {
           const secondResult = calculateDamage(
@@ -884,6 +948,7 @@ async function processTurn(battleId: string) {
             effectiveness: secondResult.effectiveness,
             isCritical: secondResult.isCritical,
             fainted: secondNewHp === 0,
+            hit: secondResult.hit,
             effects: effectResults.length > 0 ? effectResults : undefined,
           });
         }

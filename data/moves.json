@@ -97,7 +97,8 @@
         "chance": 100,
         "target": "self"
       }
-    ]
+    ],
+    "priority": 0
   },
   {
     "id": 8,
@@ -274,6 +275,7 @@
     "power": 0,
     "accuracy": 100,
     "pp": 5,
+    "priority": 4,
     "effects": [
       {
         "type": "protect",

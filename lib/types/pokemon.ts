@@ -160,7 +160,9 @@ export type TurnEvent =
       effectiveness: number;
       isCritical: boolean;
       fainted: boolean;
+      hit: boolean;
       effects?: MoveEffectResult[];
+      protected?: boolean;
     }
   | {
       type: "switch";

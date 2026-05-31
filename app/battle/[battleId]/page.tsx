@@ -85,8 +85,18 @@ export default function BattlePage({
           }),
         );
 
-        // 攻撃が外れた場合（effectivenessが0）
-        if (event.effectiveness === 0) {
+        // プロテクトで攻撃を防いだ場合
+        if (event.protected) {
+          addLog(
+            formatMessage(MESSAGES.PROTECT, {
+              target: event.defenderName,
+            }),
+          );
+          return;
+        }
+
+        // 攻撃が外れた場合
+        if (!event.hit) {
           addLog(MESSAGES.MOVE_MISS);
         }
         // 効果技が命中した場合
@@ -150,6 +160,11 @@ export default function BattlePage({
               } else {
                 addLog(MESSAGES.EFFECT_FAILED);
               }
+            }
+            // まもる系の効果の場合（技を使った時は表示しない）
+            else if (effect.type === "protect") {
+              // プロテクト効果の発動メッセージは、攻撃を防いだ時に表示される
+              // ここでは何も表示しない
             }
             // その他の効果の場合
             else {

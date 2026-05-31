@@ -4,6 +4,7 @@ import {
   MoveEffect,
   MoveEffectResult,
 } from "./types/pokemon";
+import { CUSTOM_MOVE_LOGIC_TYPES } from "./constants";
 
 // 能力ランク補正倍率
 const STAT_STAGE_MULTIPLIERS: Record<number, number> = {
@@ -168,8 +169,9 @@ function applyStatus(
 
 // 特殊な技のロジック
 export interface CustomMoveLogic {
+  customLogicType: string;
   power?: number; // 威力を変更する場合
-  modifyDamage?: (baseDamage: number) => number; // ダメージを直接変更する場合
+  fixedDamage?: number; // ダメージを固定する場合
 }
 
 // 特殊な技の処理を取得
@@ -182,8 +184,9 @@ export function getCustomMoveLogic(
     return null;
   }
 
+  // きしかいせい
   if (move.customLogic === "reversal") {
-    // きしかいせい：HP残量で威力変動
+    // HP残量で威力変動
     const hpRatio = attacker.currentHp / attacker.maxHp;
     let power = 20;
     if (hpRatio < 0.04) {
@@ -198,23 +201,34 @@ export function getCustomMoveLogic(
       power = 40;
     }
 
-    return { power };
+    return { 
+      customLogicType: CUSTOM_MOVE_LOGIC_TYPES.POWER,
+      power 
+    };
   }
 
+  // エラがみ
   if (move.customLogic === "fishiousRend") {
-    // エラがみ：先制なら威力2倍
+    // 先制なら威力2倍
     let power = move.power;
     if (isFirst) {
       power = power * 2;
     }
 
-    return { power };
+    return { 
+      customLogicType: CUSTOM_MOVE_LOGIC_TYPES.POWER,
+      power 
+    };
   }
 
+  // れんぞくぎり
   if (move.customLogic === "consecutiveCut") {
-    // れんぞくぎり：連続使用で威力上昇（未実装）
+    // 連続使用で威力上昇（未実装）
     // TODO: バトル状態に連続使用カウンターを追加する必要がある
-    return { power: move.power };
+    return { 
+      customLogicType: CUSTOM_MOVE_LOGIC_TYPES.POWER,
+      power: move.power 
+    };
   }
 
   return null;
